@@ -356,8 +356,35 @@ rebindCanvas(newCanvas){
 })();
 </script>
 
+<style id="drop-follow-box-style">
+  #drop-follow-box{
+    position:absolute;
+    border:2px dashed #3b82f6;
+    border-radius:12px;
+    pointer-events:none;
+    z-index:9999;
+    background:rgba(59,130,246,0.06);
+    display:none;
+  }
+</style>
 </head>
 <body>
+
+<script id="drop-follow-box-script">
+  (function(){
+    if (window.ensureDropBox) return;
+    window.ensureDropBox = function ensureDropBox(){
+      var box = document.getElementById('drop-follow-box');
+      if(!box){
+        box = document.createElement('div');
+        box.id = 'drop-follow-box';
+        document.body.appendChild(box);
+      }
+      return box;
+    };
+  })();
+</script>
+
 <header>
   <div class="wrap">
     <h1>Shot List Builder</h1>
@@ -731,13 +758,49 @@ async function isAnimatedWebP(file){
       const starEl=tr.querySelector('.starlist'); starEl.textContent=s.starred?'★':'☆'; starEl.style.cursor='pointer';
       starEl.addEventListener('click',()=>{ s.starred=!s.starred; render(); });
 
-      tr.addEventListener('dragstart',(e)=>{ tr.classList.add('dragging'); e.dataTransfer.setData('text/plain',s.id); });
-      tr.addEventListener('dragend',()=> tr.classList.remove('dragging'));
-      tr.addEventListener('dragover',(e)=>{ e.preventDefault(); tr.classList.add('ghost'); });
-      tr.addEventListener('dragleave',()=> tr.classList.remove('ghost'));
-      tr.addEventListener('drop',(e)=>{ e.preventDefault(); tr.classList.remove('ghost'); reorderById(e.dataTransfer.getData('text/plain'), s.id); });
-
-      tr.querySelector('.selbox').addEventListener('change',e=> s.selected=e.target.checked);
+      tr.setAttribute('draggable','false');
+const handle = tr.querySelector('td.drag .handle');
+if (handle) handle.setAttribute('draggable','true');
+if (handle) handle.addEventListener('dragstart',(e)=>{
+  e.stopPropagation();
+  tr.classList.add('dragging');
+  e.dataTransfer.setData('text/plain', s.id);
+  e.dataTransfer.effectAllowed = 'move';
+  const box = window.ensureDropBox ? window.ensureDropBox() : null;
+  if (box) box.style.display = 'block';
+});
+if (handle) handle.addEventListener('dragend',(e)=>{
+  e.stopPropagation();
+  tr.classList.remove('dragging');
+  const box = window.ensureDropBox ? window.ensureDropBox() : null;
+  if (box) box.style.display = 'none';
+});
+tr.addEventListener('dragover',(e)=>{
+  e.preventDefault();
+  tr.classList.add('ghost');
+  const box = window.ensureDropBox ? window.ensureDropBox() : null;
+  if (box){
+    const r = tr.getBoundingClientRect();
+    box.style.left = (window.scrollX + r.left) + 'px';
+    box.style.top  = (window.scrollY + r.top) + 'px';
+    box.style.width  = r.width + 'px';
+    box.style.height = r.height + 'px';
+    box.style.display = 'block';
+  }
+});
+tr.addEventListener('dragleave',()=>{
+  tr.classList.remove('ghost');
+  const box = window.ensureDropBox ? window.ensureDropBox() : null;
+  if (box) box.style.display = 'none';
+});
+tr.addEventListener('drop',(e)=>{
+  e.preventDefault();
+  tr.classList.remove('ghost');
+  const box = window.ensureDropBox ? window.ensureDropBox() : null;
+  if (box) box.style.display = 'none';
+  reorderById(e.dataTransfer.getData('text/plain'), s.id);
+});
+tr.querySelector('.selbox').addEventListener('change',e=> s.selected=e.target.checked);
       tr.querySelector('.title').addEventListener('input',e=> s.title=e.target.value);
       tr.querySelector('.starttc').addEventListener('input',e=> s.startTC=e.target.value);
       tr.querySelector('.endtc').addEventListener('input',e=> s.endTC=e.target.value);
@@ -805,6 +868,13 @@ async function isAnimatedWebP(file){
             if (document.activeElement !== slider) slider.value = String(idx);
             s.webpFrame = idx;
           };
+          // Wire slider to seek frames
+          slider.oninput = () => {
+            const p = getPlayer(); if (!p) return;
+            const idx = parseInt(slider.value || '0', 10);
+            p.seek(idx, updateUIFromIndex);
+          };
+
         
         if (s.imageURL){
           // Use canvas + controls
@@ -885,12 +955,54 @@ async function isAnimatedWebP(file){
         card.querySelector('.'+cls).addEventListener('input',e=> s[cls==='starttc'?'startTC':cls==='endtc'?'endTC':cls]=e.target.value);
       });
 
-      const dragHandle=card.querySelector('.drag-handle');
-      dragHandle.addEventListener('mousedown',()=> card.setAttribute('draggable','true'));
-      dragHandle.addEventListener('mouseup',()=> card.removeAttribute('draggable'));
-      card.addEventListener('dragstart',(e)=>{ card.classList.add('dragging'); e.dataTransfer.setData('text/plain',s.id); });
-      card.addEventListener('dragend',()=> card.classList.remove('dragging'));
-      card.addEventListener('dragover',(e)=>{ e.preventDefault(); card.classList.add('ghost'); });
+      const dragHandle = card.querySelector('.drag-handle');
+card.setAttribute('draggable','false');
+if (dragHandle) dragHandle.setAttribute('draggable','true');
+if (dragHandle) dragHandle.addEventListener('dragstart',(e)=>{
+  e.stopPropagation();
+  card.classList.add('dragging');
+  e.dataTransfer.setData('text/plain', s.id);
+  e.dataTransfer.effectAllowed = 'move';
+  const box = ensureDropBox();
+  box.style.display = 'block';
+});
+if (dragHandle) dragHandle.addEventListener('dragend',(e)=>{
+  e.stopPropagation();
+  card.classList.remove('dragging');
+  const box = ensureDropBox();
+  box.style.display = 'none';
+});
+// Prevent dragging from anywhere except the handle
+card.addEventListener('dragstart', (e)=>{ e.preventDefault(); });
+// Make sure the WebP frame slider never bubbles into a drag
+const webpSliderEl = card.querySelector('.webp-controls input[type=range]');
+if (webpSliderEl){
+  ['mousedown','pointerdown','touchstart','dragstart'].forEach(ev=>
+    webpSliderEl.addEventListener(ev, evObj => evObj.stopPropagation())
+  );
+}
+// Position the drop-follow box over the card under the cursor
+card.addEventListener('dragover',(e)=>{
+  e.preventDefault();
+  const box = ensureDropBox();
+  const r = card.getBoundingClientRect();
+  box.style.left = (window.scrollX + r.left) + 'px';
+  box.style.top  = (window.scrollY + r.top) + 'px';
+  box.style.width  = r.width + 'px';
+  box.style.height = r.height + 'px';
+  box.style.display = 'block';
+});
+card.addEventListener('dragleave',()=>{
+  const box = ensureDropBox();
+  box.style.display = 'none';
+});
+card.addEventListener('drop',(e)=>{
+  e.preventDefault();
+  const box = ensureDropBox();
+  box.style.display = 'none';
+  reorderById(e.dataTransfer.getData('text/plain'), s.id);
+});
+card.addEventListener('dragover',(e)=>{ e.preventDefault(); card.classList.add('ghost'); });
       card.addEventListener('dragleave',()=> card.classList.remove('ghost'));
       card.addEventListener('drop',(e)=>{ e.preventDefault(); card.classList.remove('ghost'); reorderById(e.dataTransfer.getData('text/plain'), s.id); });
 
@@ -1092,7 +1204,18 @@ printBtn.addEventListener('click',()=>{
     .meta{font-size:10px;color:#333;margin-top:4px} .label{color:#6b7280} h1{font-size:14px;margin:0 0 8px} .note{font-size:10px;color:#555;margin-bottom:10px}
     .desc{white-space:pre-wrap}`;
   const title=document.title, time=new Date().toLocaleString();
-  const html=`<!doctype html><html><head><meta charset="utf-8"><title>${title} — Print</title><style>${styles}</style></head><body>
+  const html=`<!doctype html><html><head><meta charset="utf-8"><title>${title} — Print</title><style>${styles}</style><style id="drop-follow-box-style">
+  #drop-follow-box{
+    position:absolute;
+    border:2px dashed #3b82f6;
+    border-radius:12px;
+    pointer-events:none;
+    z-index:9999;
+    background:rgba(59,130,246,0.06);
+    display:none;
+  }
+</style>
+</head><body>
     <h1>Shot List</h1><div class="note">Generated ${time}. Use your browser’s <b>Save as PDF</b>.</div><div class="grid">${
       list.map((s,i)=>`
         <div class="card">
@@ -1130,7 +1253,7 @@ return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 function buildCsvRows(list){
 const headers = [
   'Index','Filename','Format','MediaType','Title','Description',
-  'Camera','Lens','Take','Notes','StartTC','EndTC','Starred'
+  'Camera','Lens','Take','Notes','StartTC','EndTC','Starred','WebPFrame','WebPTotalFrames'
 ];
 const rows = list.map((s, i) => [
   i+1,
