@@ -335,6 +335,17 @@ canvas.webpCanvas{max-width:100%;height:auto;border-radius:8px;box-shadow:0 2px 
       this.draw(this.index);
       try{ onIndex && onIndex(this.index); }catch{}
     }
+rebindCanvas(newCanvas){
+      if (!newCanvas || this.canvas === newCanvas) return;
+      this.canvas = newCanvas;
+      this.ctx = newCanvas.getContext('2d');
+      if (this.size){
+        this.canvas.width  = this.size.w;
+        this.canvas.height = this.size.h;
+      }
+      this.draw(this.index|0);
+    }
+
     dispose(){
       this.pause();
       for(const bmp of this.frames){ try{ bmp.close?.(); }catch{} }
@@ -651,106 +662,26 @@ async function isAnimatedWebP(file){
     const len = u8.length;
     const tagAt = (i)=> String.fromCharCode(u8[i],u8[i+1],u8[i+2],u8[i+3]||0);
     const u32LE = (i)=> (u8[i] | (u8[i+1]<<8) | (u8[i+2]<<16) | (u8[i+3]<<24)>>>0);
-
     if(len < 16) return false;
     if(tagAt(0) !== 'RIFF' || tagAt(8) !== 'WEBP') return false;
     let off = 12;
     while(off + 8 <= len){
       const tag = tagAt(off);
-      const size = u32LE(off+4);
+      const size = u32LE(off+4) >>> 0;
       const dataOff = off + 8;
       if(tag === 'VP8X' && dataOff + 1 < len){
         const flags = u8[dataOff];
-        // Bit 1 (0x02) indicates animation present
-        if((flags & 0x02) !== 0) return true;
+        if((flags & 0x02) !== 0) return true; // animation flag
       }
-      
-// WebP canvas player using WebCodecs ImageDecoder
-window._webpPlayers = window._webpPlayers || new Map();
-class WebPPlayer {
-  constructor(canvas, url){
-    this.canvas = canvas;
-    this.ctx = canvas.getContext('2d');
-    this.url = url;
-    this.frames = [];
-    this.durations = [];
-    this.size = null;
-    this.index = 0;
-    this.playing = false;
-    this.t = null;
-  }
-  
-
-
-async load(){
-    if (!('ImageDecoder' in window)) throw new Error('WebCodecs ImageDecoder not supported in this browser.');
-    const res = await fetch(this.url);
-    const blob = await res.blob();
-    const data = new Uint8Array(await blob.arrayBuffer());
-    const decoder = new ImageDecoder({data, type:'image/webp'});
-    await decoder.tracks.ready;
-    const frameCount = decoder.tracks.selectedTrack?.frameCount ?? decoder.completeFrameCount ?? decoder.frameCount ?? 0;
-    const count = Math.max(frameCount || 0, 1);
-    this.frames = new Array(count);
-    this.durations = new Array(count);
-    for (let i=0; i<count; i++){
-      const {image} = await decoder.decode({frameIndex:i});
-      const bmp = await createImageBitmap(image);
-      this.frames[i] = bmp;
-      // duration is in milliseconds per spec; default 100ms if missing
-      this.durations[i] = (typeof image.duration === 'number' && image.duration>0) ? image.duration : 100;
-      this.size = {w: image.displayWidth || bmp.width, h: image.displayHeight || bmp.height};
-      image.close();
-    }
-    decoder.close();
-    // fit canvas
-    this.canvas.width = this.size.w;
-    this.canvas.height = this.size.h;
-    this.draw(0);
-  }
-  draw(i){
-    this.index = i|0;
-    if(!this.frames.length) return;
-    this.ctx.clearRect(0,0,this.canvas.width,this.canvas.height);
-    const frame = this.frames[this.index % this.frames.length];
-    if(frame) this.ctx.drawImage(frame, 0, 0);
-  }
-  play(onIndex){
-    if(this.playing || !this.frames.length) return;
-    this.playing = true;
-    const tick = () => {
-      if(!this.playing) return;
-      this.draw(this.index);
-      try{ onIndex && onIndex(this.index); }catch{}
-      const delay = this.durations[this.index] || 100;
-      this.index = (this.index + 1) % this.frames.length;
-      this.t = setTimeout(tick, delay);
-    };
-    tick();
-  }
-  pause(){
-    this.playing = false;
-    if(this.t){ clearTimeout(this.t); this.t = null; }
-  }
-  goto(i, onIndex){
-    this.pause();
-    this.draw(Math.max(0, Math.min(this.frames.length-1, i|0)));
-    try{ onIndex && onIndex(this.index); }catch{}
-  }
-  dispose(){
-    this.pause();
-    for(const bmp of this.frames){ try{ bmp.close?.(); }catch{} }
-    this.frames = [];
-  }
-}
-window.WebPPlayer = WebPPlayer;
-
-if(tag === 'ANIM') return true;
-      off = dataOff + size + (size & 1); // chunks are padded to even size
+      if(tag === 'ANIM') return true;
+      off = dataOff + size + (size & 1); // chunks padded to even size
     }
     return false;
-  }catch{ return false; }
+  }catch{
+    return false;
+  }
 }
+
 
   async function videoPoster(file, time=0.1){
     return new Promise((resolve)=>{
@@ -857,9 +788,6 @@ if(tag === 'ANIM') return true;
         if(!ctrls){
           ctrls = document.createElement('div'); ctrls.className='webp-controls hidden';
           ctrls.innerHTML = `
-            <button type="button" data-act="play">Play</button>
-            <button type="button" data-act="pause">Pause</button>
-            <button type="button" data-act="stop">Stop</button>
             <label style="display:flex;align-items:center;gap:.5rem;">
               <span>Frame</span>
               <input type="range" min="0" max="0" value="0" step="1" data-act="slider">
@@ -867,11 +795,16 @@ if(tag === 'ANIM') return true;
             </label>`;
           canvas.after(ctrls);
         }
-        const playBtn = ctrls.querySelector('[data-act=play]');
-        const pauseBtn = ctrls.querySelector('[data-act=pause]');
-        const stopBtn = ctrls.querySelector('[data-act=stop]');
-        const slider = ctrls.querySelector('[data-act=slider]');
-        const label = ctrls.querySelector('[data-act=label]');
+          const slider = ctrls.querySelector('[data-act=slider]');
+          const label  = ctrls.querySelector('[data-act=label]');
+          const getPlayer = ()=> (window._webpPlayers && window._webpPlayers.get(s.id)) || null;
+          const updateUIFromIndex = (idx)=>{
+            const p = getPlayer();
+            const total = p && p.frames ? p.frames.length : 0;
+            label.textContent = total ? `${idx+1}/${total}` : `${idx+1}`;
+            if (document.activeElement !== slider) slider.value = String(idx);
+            s.webpFrame = idx;
+          };
         
         if (s.imageURL){
           // Use canvas + controls
@@ -888,18 +821,18 @@ if(tag === 'ANIM') return true;
           let player = window._webpPlayers.get(s.id);
           const ensureLoaded = async ()=>{
             if (typeof WebPPlayer === 'undefined'){
-              // Wait for the player class to be defined, then try again
-              const start = Date.now();
+              const startTs = Date.now();
               const poll = ()=>{
                 if (typeof WebPPlayer !== 'undefined'){ ensureLoaded(); return; }
-                if (Date.now() - start > 5000){ console.warn('WebPPlayer not available'); return; }
+                if (Date.now() - startTs > 5000){ console.warn('WebPPlayer not available'); return; }
                 setTimeout(poll, 50);
               };
-              poll();
-              return;
+              poll(); return;
             }
+            window._webpPlayers = window._webpPlayers || new Map();
+            let player = window._webpPlayers.get(s.id);
             if (player && player.url !== s.imageURL){
-              try{ player.dispose(); }catch{}
+              try{ player.dispose(); }catch{};
               window._webpPlayers.delete(s.id);
               player = null;
             }
@@ -907,29 +840,18 @@ if(tag === 'ANIM') return true;
               player = new WebPPlayer(canvas, s.imageURL);
               window._webpPlayers.set(s.id, player);
               try{ await player.load(); }catch(e){ console.warn('WebP load failed', e); }
-              slider.max = String(Math.max(0, player.frames.length-1));
-              slider.value = "0";
-              label.textContent = `1/${player.frames.length}`;
-            }else{
-              slider.max = String(Math.max(0, player.frames.length-1));
-              label.textContent = `${(player.index+1)}/${player.frames.length}`;
-              slider.value = String(player.index);
             }
-          };
+            if (player.canvas !== canvas) player.rebindCanvas(canvas);
+            const total = player.frames.length;
+            s.webpTotalFrames = total || 0;
+            slider.max = String(Math.max(0, total-1));
+            const startIdx = Number.isInteger(s.webpFrame) ? (s.webpFrame|0) : (player.index|0);
+            player.seek(startIdx, updateUIFromIndex);
+    };
           ensureLoaded();
           
-          const updateUIFromIndex = (idx)=>{
-            try{ const p=(window._webpPlayers && window._webpPlayers.get(s.id))||null; label.textContent = `${(idx+1)}/${p?p.frames.length:0}`; }catch{ label.textContent = `${idx+1}`; }
-            if (document.activeElement !== slider) slider.value = String(idx);
-          };
-          
-          playBtn.onclick = ()=>{ const p=(window._webpPlayers && window._webpPlayers.get(s.id))||null; if(p) p.play(updateUIFromIndex); };
-          pauseBtn.onclick = ()=>{ const p=(window._webpPlayers && window._webpPlayers.get(s.id))||null; if(p) p.pause(); };
-          stopBtn.onclick = ()=>{ const p=(window._webpPlayers && window._webpPlayers.get(s.id))||null; if(p) p.goto(0, updateUIFromIndex); };
-          slider.oninput = ()=>{ const p=(window._webpPlayers && window._webpPlayers.get(s.id))||null; if(p) p.seek(parseInt(slider.value||'0',10), updateUIFromIndex); };
-          
           // Store cleanup hook on holder for when navigating away
-          holder._disposeWebP = ()=>{ try{ player && player.dispose(); }catch{}; window._webpPlayers.delete(s.id); };
+          holder._disposeWebP = ()=>{ try{ const p=(window._webpPlayers&&window._webpPlayers.get(s.id))||null; if(p && p.pause) p.pause(); }catch{}; /* keep cached frames */ };
         }else{
           // Fallback to static poster behavior
           if (holder._disposeWebP){ try{ holder._disposeWebP(); }catch{}; holder._disposeWebP=null; }
@@ -1013,6 +935,8 @@ if(tag === 'ANIM') return true;
           thumb,
           imageURL: url,
           isAnimated: !!anim,
+          webpFrame: 0,
+          webpTotalFrames: 0,
           title: '',
           startTC: '',
           endTC: '',
@@ -1035,6 +959,8 @@ if(tag === 'ANIM') return true;
           mediaType: 'image',
           thumb,
           isAnimated: false,
+          webpFrame: 0,
+          webpTotalFrames: 0,
           title: '',
           startTC: '',
           endTC: '',
@@ -1058,6 +984,8 @@ if(tag === 'ANIM') return true;
         mediaType: 'video',
         previewURL: url,
         thumb: poster,
+        webpFrame: 0,
+        webpTotalFrames: 0,
         title: '',
         startTC: '',
         endTC: '',
@@ -1087,13 +1015,16 @@ if(tag === 'ANIM') return true;
       shot.mediaType='image'; shot.thumb=thumb; delete shot.previewURL;
       shot.isAnimated=!!anim;
       shot.imageURL = URL.createObjectURL(file);
+      shot.webpFrame = 0;
+      shot.webpTotalFrames = 0;
     }else{
       const dataUrl=await readAsDataURL(file); const thumb=await downscale(dataUrl,1600,1600,.85);
       shot.mediaType='image'; shot.thumb=thumb; delete shot.previewURL; shot.isAnimated=false;
+      shot.webpFrame = 0; shot.webpTotalFrames = 0;
       if(shot.imageURL){ try{ URL.revokeObjectURL(shot.imageURL);}catch{} } delete shot.imageURL;
     }
   }else{
-    const poster=await videoPoster(file)||''; shot.mediaType='video'; shot.previewURL=URL.createObjectURL(file); shot.thumb=poster; shot.isAnimated=false;
+    const poster=await videoPoster(file)||''; shot.mediaType='video'; shot.previewURL=URL.createObjectURL(file); shot.thumb=poster; shot.isAnimated=false; shot.webpFrame=0; shot.webpTotalFrames=0;
     if(shot.imageURL){ try{ URL.revokeObjectURL(shot.imageURL);}catch{} } delete shot.imageURL;
   }
 }
@@ -1148,89 +1079,7 @@ if(tag === 'ANIM') return true;
   });
 
 
-// Ensure WebPPlayer exists early (runs before main script)
-(function(){
-  if ('WebPPlayer' in window) return;
-  window._webpPlayers = window._webpPlayers || new Map();
-  // Minimal WebP canvas player using WebCodecs
-  class WebPPlayer {
-    constructor(canvas, url){
-      this.canvas = canvas;
-      this.ctx = canvas.getContext('2d');
-      this.url = url;
-      this.frames = [];
-      this.durations = [];
-      this.size = null;
-      this.index = 0;
-      this.playing = false;
-      this.t = null;
-    }
-    async load(){
-      if (!('ImageDecoder' in window)) throw new Error('WebCodecs ImageDecoder not supported');
-      const res = await fetch(this.url);
-      const blob = await res.blob();
-      const data = new Uint8Array(await blob.arrayBuffer());
-      const decoder = new ImageDecoder({data, type:'image/webp'});
-      await decoder.tracks.ready;
-      const frameCount = decoder.tracks.selectedTrack?.frameCount ?? decoder.completeFrameCount ?? decoder.frameCount ?? 0;
-      const count = Math.max(frameCount || 0, 1);
-      this.frames = new Array(count);
-      this.durations = new Array(count);
-      for (let i=0; i<count; i++){
-        const {image} = await decoder.decode({frameIndex:i});
-        const bmp = await createImageBitmap(image);
-        this.frames[i] = bmp;
-        this.durations[i] = (typeof image.duration === 'number' && image.duration>0) ? image.duration : 100;
-        this.size = {w: image.displayWidth || bmp.width, h: image.displayHeight || bmp.height};
-        image.close();
-      }
-      decoder.close();
-      this.canvas.width = this.size.w;
-      this.canvas.height = this.size.h;
-      this.draw(0);
-    }
-    draw(i){
-      this.index = i|0;
-      if(!this.frames.length) return;
-      this.ctx.clearRect(0,0,this.canvas.width,this.canvas.height);
-      const frame = this.frames[this.index % this.frames.length];
-      if(frame) this.ctx.drawImage(frame, 0, 0);
-    }
-    play(onIndex){
-      if(this.playing || !this.frames.length) return;
-      this.playing = true;
-      const tick = () => {
-        if(!this.playing) return;
-        this.draw(this.index);
-        try{ onIndex && onIndex(this.index); }catch{}
-        const delay = this.durations[this.index] || 100;
-        this.index = (this.index + 1) % this.frames.length;
-        this.t = setTimeout(tick, delay);
-      };
-      tick();
-    }
-    pause(){
-      this.playing = false;
-      if(this.t){ clearTimeout(this.t); this.t = null; }
-    }
-    goto(i, onIndex){
-      this.pause();
-      this.draw(Math.max(0, Math.min(this.frames.length-1, i|0)));
-      try{ onIndex && onIndex(this.index); }catch{}
-    }
-    seek(i, onIndex){
-      this.index = Math.max(0, Math.min(this.frames.length-1, i|0));
-      this.draw(this.index);
-      try{ onIndex && onIndex(this.index); }catch{}
-    }
-    dispose(){
-      this.pause();
-      for(const bmp of this.frames){ try{ bmp.close?.(); }catch{} }
-      this.frames = [];
-    }
-  }
-  window.WebPPlayer = WebPPlayer;
-})();
+
 
 // print
 printBtn.addEventListener('click',()=>{
@@ -1296,7 +1145,9 @@ const rows = list.map((s, i) => [
   s.notes||'',
   s.startTC||'',
   s.endTC||'',
-  s.starred ? 1 : 0
+  s.starred ? 1 : 0,
+  (Number.isInteger(s.webpFrame) ? s.webpFrame : ''),
+  (s.webpTotalFrames || '')
 ]);
 return [headers, ...rows];
 }
