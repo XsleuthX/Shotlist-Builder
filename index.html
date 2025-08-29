@@ -504,7 +504,7 @@ body::-webkit-scrollbar{
   let shots = []; // includes {collapsed:boolean}
   let mode = 'list';
   let renderCount = 0;
-  const BATCH_SIZE = 30;
+  const BATCH_SIZE = Infinity;
 
   const readAsDataURL = (file)=> new Promise((res, rej)=>{
     const fr = new FileReader(); fr.onerror = rej; fr.onload = ()=> res(fr.result); fr.readAsDataURL(file);
