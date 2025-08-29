@@ -504,7 +504,7 @@ body::-webkit-scrollbar{
   let shots = []; // includes {collapsed:boolean}
   let mode = 'list';
   let renderCount = 0;
-  const BATCH_SIZE = Infinity;
+  const BATCH_SIZE = 30;
 
   const readAsDataURL = (file)=> new Promise((res, rej)=>{
     const fr = new FileReader(); fr.onerror = rej; fr.onload = ()=> res(fr.result); fr.readAsDataURL(file);
@@ -547,6 +547,34 @@ body::-webkit-scrollbar{
     return `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}:${String(ff).padStart(2,'0')}`;
   }
 
+// Detect if a WebP is animated by reading RIFF chunks (VP8X flag or ANIM chunk)
+async function isAnimatedWebP(file){
+  try{
+    const buf = await file.arrayBuffer();
+    const u8 = new Uint8Array(buf);
+    const len = u8.length;
+    const tagAt = (i)=> String.fromCharCode(u8[i],u8[i+1],u8[i+2],u8[i+3]||0);
+    const u32LE = (i)=> (u8[i] | (u8[i+1]<<8) | (u8[i+2]<<16) | (u8[i+3]<<24)>>>0);
+
+    if(len < 16) return false;
+    if(tagAt(0) !== 'RIFF' || tagAt(8) !== 'WEBP') return false;
+    let off = 12;
+    while(off + 8 <= len){
+      const tag = tagAt(off);
+      const size = u32LE(off+4);
+      const dataOff = off + 8;
+      if(tag === 'VP8X' && dataOff + 1 < len){
+        const flags = u8[dataOff];
+        // Bit 1 (0x02) indicates animation present
+        if((flags & 0x02) !== 0) return true;
+      }
+      if(tag === 'ANIM') return true;
+      off = dataOff + size + (size & 1); // chunks are padded to even size
+    }
+    return false;
+  }catch{ return false; }
+}
+
   async function videoPoster(file, time=0.1){
     return new Promise((resolve)=>{
       const url = URL.createObjectURL(file), v = document.createElement('video');
@@ -579,7 +607,14 @@ body::-webkit-scrollbar{
     filteredShots().forEach((s,i)=>{
       const tr = rowTpl.content.firstElementChild.cloneNode(true); tr.dataset.id=s.id;
       tr.querySelector('.idx').textContent=String(i+1).padStart(3,'0');
-      tr.querySelector('img.thumb').src=s.thumb; tr.querySelector('[data-filename]').textContent=s.filename;
+      const thumbImg = tr.querySelector('img.thumb');
+      thumbImg.src = s.thumb || '';
+      if (s.isAnimated && s.imageURL){
+        thumbImg.addEventListener('mouseenter', ()=>{ thumbImg.src = s.imageURL; });
+        thumbImg.addEventListener('mouseleave', ()=>{ thumbImg.src = s.thumb || ''; });
+        thumbImg.title = 'Hover to preview animation';
+      }
+      tr.querySelector('[data-filename]').textContent=s.filename;
       tr.querySelector('.selbox').checked=!!s.selected;
       tr.querySelector('.title').value=s.title||''; tr.querySelector('.starttc').value=s.startTC||''; tr.querySelector('.endtc').value=s.endTC||'';
       tr.querySelector('.desc').value=s.desc||''; tr.querySelector('.camera').value=s.camera||''; tr.querySelector('.lens').value=s.lens||'';
@@ -630,7 +665,18 @@ body::-webkit-scrollbar{
       const img=card.querySelector('.media-img'); const vid=card.querySelector('.media-vid');
       const replaceBtn=card.querySelector('.replace'); const replaceInput=card.querySelector('.replaceInput');
       if(s.mediaType==='video' && s.previewURL){ vid.classList.remove('hidden'); img.classList.add('hidden'); vid.src=s.previewURL; vid.poster=s.thumb||''; }
-      else { img.classList.remove('hidden'); vid.classList.add('hidden'); img.src=s.thumb; }
+      else { img.classList.remove('hidden'); vid.classList.add('hidden');
+        if (s.isAnimated && s.imageURL){
+          let playing = true;
+          const update = ()=>{ img.src = playing ? s.imageURL : (s.thumb||''); };
+          update();
+          img.style.cursor='pointer';
+          img.title='Click to pause/play animation';
+          img.addEventListener('click', ()=>{ playing = !playing; update(); });
+        }else{
+          img.src = s.thumb || '';
+        }
+      }
       replaceBtn.addEventListener('click',()=> replaceInput.click());
       replaceInput.addEventListener('change',async (e)=>{ const f=e.target.files[0]; if(!f) return; await replaceMedia(s,f); render(); });
 
@@ -676,7 +722,11 @@ body::-webkit-scrollbar{
     if(from<0||to<0) return; const [moved]=shots.splice(from,1); shots.splice(to,0,moved); render();
   }
   function removeShot(id){
-    const s=shots.find(x=>x.id===id); if(s&&s.mediaType==='video'&&s.previewURL) try{ URL.revokeObjectURL(s.previewURL);}catch{}
+    const s=shots.find(x=>x.id===id);
+    if(s){
+      if(s.mediaType==='video'&&s.previewURL) try{ URL.revokeObjectURL(s.previewURL);}catch{}
+      if(s.imageURL) try{ URL.revokeObjectURL(s.imageURL);}catch{}
+    }
     shots=shots.filter(x=>x.id!==id); render();
   }
 
@@ -690,9 +740,20 @@ body::-webkit-scrollbar{
     for (const f of [...list]){
       if(!f.type || !(f.type.startsWith('image/')||f.type.startsWith('video/'))) continue;
       if(f.type.startsWith('image/')){
-        const dataUrl=await readAsDataURL(f); const thumb=await downscale(dataUrl,1600,1600,.85);
-        shots.push({id:crypto.randomUUID(), filename:f.name, format:inferFormat(f), mediaType:'image', thumb,
-          title:'', startTC:'', endTC:'', desc:'', camera:'', lens:'', take:'', notes:'', selected:false, starred:false, collapsed:true});
+        if (f.type === 'image/webp'){
+          // Generate a static poster but keep the blob URL for animation playback if animated
+          const [dataUrl, anim] = await Promise.all([readAsDataURL(f), isAnimatedWebP(f)]);
+          const thumb = await downscale(dataUrl,1600,1600,.85);
+          const url = anim ? URL.createObjectURL(f) : null;
+          shots.push({id:crypto.randomUUID(), filename:f.name, format:inferFormat(f), mediaType:'image', thumb,
+            imageURL:url, isAnimated:!!anim,
+            title:'', startTC:'', endTC:'', desc:'', camera:'', lens:'', take:'', notes:'', selected:false, starred:false, collapsed:true});
+        }else{
+          const dataUrl=await readAsDataURL(f); const thumb=await downscale(dataUrl,1600,1600,.85);
+          shots.push({id:crypto.randomUUID(), filename:f.name, format:inferFormat(f), mediaType:'image', thumb,
+            isAnimated:false,
+            title:'', startTC:'', endTC:'', desc:'', camera:'', lens:'', take:'', notes:'', selected:false, starred:false, collapsed:true});
+        }
       }else{
         const poster=await videoPoster(f)||''; const url=URL.createObjectURL(f);
         shots.push({id:crypto.randomUUID(), filename:f.name, format:inferFormat(f), mediaType:'video', previewURL:url, thumb:poster,
@@ -705,12 +766,21 @@ body::-webkit-scrollbar{
   async function replaceMedia(shot,file){
     if(!file || !(file.type && (file.type.startsWith('image/')||file.type.startsWith('video/')))) return;
     if(shot.mediaType==='video' && shot.previewURL) try{ URL.revokeObjectURL(shot.previewURL);}catch{}
+    if(shot.imageURL) { try{ URL.revokeObjectURL(shot.imageURL); }catch{} }
     shot.filename=file.name; shot.format=inferFormat(file);
     if(file.type.startsWith('image/')){
-      const dataUrl=await readAsDataURL(file); const thumb=await downscale(dataUrl,1600,1600,.85);
-      shot.mediaType='image'; shot.thumb=thumb; delete shot.previewURL;
+      if (file.type === 'image/webp'){
+        const [dataUrl, anim] = await Promise.all([readAsDataURL(file), isAnimatedWebP(file)]);
+        const thumb=await downscale(dataUrl,1600,1600,.85);
+        shot.mediaType='image'; shot.thumb=thumb; delete shot.previewURL;
+        shot.isAnimated=!!anim;
+        shot.imageURL = anim ? URL.createObjectURL(file) : null;
+      }else{
+        const dataUrl=await readAsDataURL(file); const thumb=await downscale(dataUrl,1600,1600,.85);
+        shot.mediaType='image'; shot.thumb=thumb; delete shot.previewURL; shot.isAnimated=false; if(shot.imageURL){ try{ URL.revokeObjectURL(shot.imageURL);}catch{} } delete shot.imageURL;
+      }
     }else{
-      const poster=await videoPoster(file)||''; shot.mediaType='video'; shot.previewURL=URL.createObjectURL(file); shot.thumb=poster;
+      const poster=await videoPoster(file)||''; shot.mediaType='video'; shot.previewURL=URL.createObjectURL(file); shot.thumb=poster; shot.isAnimated=false; if(shot.imageURL){ try{ URL.revokeObjectURL(shot.imageURL);}catch{} } delete shot.imageURL;
     }
   }
 
@@ -718,7 +788,7 @@ body::-webkit-scrollbar{
   selectAllBtn.addEventListener('click',()=>{ shots.forEach(s=>s.selected=true); render(); });
   deselectAllBtn.addEventListener('click',()=>{ shots.forEach(s=>s.selected=false); render(); });
   deleteSelBtn.addEventListener('click',()=>{ shots.filter(s=>s.selected).map(s=>s.id).forEach(removeShot); });
-  clearAllBtn.addEventListener('click',()=>{ if(confirm('Remove all items?')){ shots.forEach(s=>{ if(s.mediaType==='video'&&s.previewURL) try{URL.revokeObjectURL(s.previewURL);}catch{} }); shots=[]; render(); }});
+  clearAllBtn.addEventListener('click',()=>{ if(confirm('Remove all items?')){ shots.forEach(s=>{ if(s.mediaType==='video'&&s.previewURL) try{URL.revokeObjectURL(s.previewURL);}catch{}; if(s.imageURL) try{URL.revokeObjectURL(s.imageURL);}catch{} }); shots=[]; render(); }});
 
   // batch replace (not append)
   applyBatchBtn.addEventListener('click',()=>{
@@ -745,8 +815,8 @@ body::-webkit-scrollbar{
 
   // export/import
   exportJSONBtn.addEventListener('click',()=>{
-    const safe=shots.map(({previewURL, ...rest})=>rest);
-    const data={meta:{app:'shotlist-maker',v:4,exported:new Date().toISOString()}, shots:safe};
+    const safe=shots.map(({previewURL, imageURL, ...rest})=>rest);
+    const data={meta:{app:'shotlist-maker',v:5,exported:new Date().toISOString()}, shots:safe};
     const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}); const a=document.createElement('a');
     a.href=URL.createObjectURL(blob); a.download='shotlist.json'; a.click(); URL.revokeObjectURL(a.href);
   });
