@@ -102,6 +102,7 @@ label.filebtn{display:inline-flex; align-items:center; gap:8px}
                    border-color:rgba(255,222,132,.35)}
 /* Remove dots in segmented buttons */
 .seg button::before{display:none}
+.webp-controls button::before{display:none}
 
 /* Dropzone */
 .dropzone{border:1px dashed var(--line); border-radius:var(--r-xl); padding:24px; text-align:center;
@@ -256,6 +257,93 @@ body::-webkit-scrollbar{
 .webp-controls input[type=range]{width:240px}
 canvas.webpCanvas{max-width:100%;height:auto;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.15);}
 </style>
+
+
+<script>
+// Ensure WebPPlayer exists early (runs before main script)
+(function(){
+  if ('WebPPlayer' in window) return;
+  window._webpPlayers = window._webpPlayers || new Map();
+  // Minimal WebP canvas player using WebCodecs
+  class WebPPlayer {
+    constructor(canvas, url){
+      this.canvas = canvas;
+      this.ctx = canvas.getContext('2d');
+      this.url = url;
+      this.frames = [];
+      this.durations = [];
+      this.size = null;
+      this.index = 0;
+      this.playing = false;
+      this.t = null;
+    }
+    async load(){
+      if (!('ImageDecoder' in window)) throw new Error('WebCodecs ImageDecoder not supported');
+      const res = await fetch(this.url);
+      const blob = await res.blob();
+      const data = new Uint8Array(await blob.arrayBuffer());
+      const decoder = new ImageDecoder({data, type:'image/webp'});
+      await decoder.tracks.ready;
+      const frameCount = decoder.tracks.selectedTrack?.frameCount ?? decoder.completeFrameCount ?? decoder.frameCount ?? 0;
+      const count = Math.max(frameCount || 0, 1);
+      this.frames = new Array(count);
+      this.durations = new Array(count);
+      for (let i=0; i<count; i++){
+        const {image} = await decoder.decode({frameIndex:i});
+        const bmp = await createImageBitmap(image);
+        this.frames[i] = bmp;
+        this.durations[i] = (typeof image.duration === 'number' && image.duration>0) ? image.duration : 100;
+        this.size = {w: image.displayWidth || bmp.width, h: image.displayHeight || bmp.height};
+        image.close();
+      }
+      decoder.close();
+      this.canvas.width = this.size.w;
+      this.canvas.height = this.size.h;
+      this.draw(0);
+    }
+    draw(i){
+      this.index = i|0;
+      if(!this.frames.length) return;
+      this.ctx.clearRect(0,0,this.canvas.width,this.canvas.height);
+      const frame = this.frames[this.index % this.frames.length];
+      if(frame) this.ctx.drawImage(frame, 0, 0);
+    }
+    play(onIndex){
+      if(this.playing || !this.frames.length) return;
+      this.playing = true;
+      const tick = () => {
+        if(!this.playing) return;
+        this.draw(this.index);
+        try{ onIndex && onIndex(this.index); }catch{}
+        const delay = this.durations[this.index] || 100;
+        this.index = (this.index + 1) % this.frames.length;
+        this.t = setTimeout(tick, delay);
+      };
+      tick();
+    }
+    pause(){
+      this.playing = false;
+      if(this.t){ clearTimeout(this.t); this.t = null; }
+    }
+    goto(i, onIndex){
+      this.pause();
+      this.draw(Math.max(0, Math.min(this.frames.length-1, i|0)));
+      try{ onIndex && onIndex(this.index); }catch{}
+    }
+    seek(i, onIndex){
+      this.index = Math.max(0, Math.min(this.frames.length-1, i|0));
+      this.draw(this.index);
+      try{ onIndex && onIndex(this.index); }catch{}
+    }
+    dispose(){
+      this.pause();
+      for(const bmp of this.frames){ try{ bmp.close?.(); }catch{} }
+      this.frames = [];
+    }
+  }
+  window.WebPPlayer = WebPPlayer;
+})();
+</script>
 
 </head>
 <body>
@@ -831,14 +919,14 @@ if(tag === 'ANIM') return true;
           ensureLoaded();
           
           const updateUIFromIndex = (idx)=>{
-            label.textContent = `${(idx+1)}/${player.frames.length}`;
+            try{ const p=(window._webpPlayers && window._webpPlayers.get(s.id))||null; label.textContent = `${(idx+1)}/${p?p.frames.length:0}`; }catch{ label.textContent = `${idx+1}`; }
             if (document.activeElement !== slider) slider.value = String(idx);
           };
           
-          playBtn.onclick = ()=> player && player.play(updateUIFromIndex);
-          pauseBtn.onclick = ()=> player && player.pause();
-          stopBtn.onclick = ()=> player && (player.goto(0, updateUIFromIndex));
-          slider.oninput = ()=> player && player.goto(parseInt(slider.value||'0',10), updateUIFromIndex);
+          playBtn.onclick = ()=>{ const p=(window._webpPlayers && window._webpPlayers.get(s.id))||null; if(p) p.play(updateUIFromIndex); };
+          pauseBtn.onclick = ()=>{ const p=(window._webpPlayers && window._webpPlayers.get(s.id))||null; if(p) p.pause(); };
+          stopBtn.onclick = ()=>{ const p=(window._webpPlayers && window._webpPlayers.get(s.id))||null; if(p) p.goto(0, updateUIFromIndex); };
+          slider.oninput = ()=>{ const p=(window._webpPlayers && window._webpPlayers.get(s.id))||null; if(p) p.seek(parseInt(slider.value||'0',10), updateUIFromIndex); };
           
           // Store cleanup hook on holder for when navigating away
           holder._disposeWebP = ()=>{ try{ player && player.dispose(); }catch{}; window._webpPlayers.delete(s.id); };
@@ -910,52 +998,105 @@ if(tag === 'ANIM') return true;
   dz.addEventListener('drop', async (e)=>{ await addFiles(e.dataTransfer.files); });
 
   async function addFiles(list){
-    for (const f of [...list]){
-      if(!f.type || !(f.type.startsWith('image/')||f.type.startsWith('video/'))) continue;
-      if(f.type.startsWith('image/')){
-        if (f.type === 'image/webp'){
-          // Generate a static poster but keep the blob URL for animation playback if animated
-          const [dataUrl, anim] = await Promise.all([readAsDataURL(f), isAnimatedWebP(f)]);
-          const thumb = await downscale(dataUrl,1600,1600,.85);
-          const url = URL.createObjectURL(f);
-          shots.push({id:crypto.randomUUID(), filename:f.name, format:inferFormat(f), mediaType:'image', thumb,
-            imageURL:url, isAnimated:!!anim,
-            title:'', startTC:'', endTC:'', desc:'', camera:'', lens:'', take:'', notes:'', selected:false, starred:false, collapsed:true});
-        }else{
-          const dataUrl=await readAsDataURL(f); const thumb=await downscale(dataUrl,1600,1600,.85);
-          shots.push({id:crypto.randomUUID(), filename:f.name, format:inferFormat(f), mediaType:'image', thumb,
-            isAnimated:false,
-            title:'', startTC:'', endTC:'', desc:'', camera:'', lens:'', take:'', notes:'', selected:false, starred:false, collapsed:true});
-        }
+  for (const f of [...list]){
+    if(!f.type || !(f.type.startsWith('image/')||f.type.startsWith('video/'))) continue;
+    if(f.type.startsWith('image/')){
+      if (f.type === 'image/webp'){
+        const [dataUrl, anim] = await Promise.all([readAsDataURL(f), isAnimatedWebP(f)]);
+        const thumb = await downscale(dataUrl,1600,1600,.85);
+        const url = URL.createObjectURL(f);
+        shots.push({
+          id: crypto.randomUUID(),
+          filename: f.name,
+          format: inferFormat(f),
+          mediaType: 'image',
+          thumb,
+          imageURL: url,
+          isAnimated: !!anim,
+          title: '',
+          startTC: '',
+          endTC: '',
+          desc: '',
+          camera: '',
+          lens: '',
+          take: '',
+          notes: '',
+          selected: false,
+          starred: false,
+          collapsed: true
+        });
       }else{
-        const poster=await videoPoster(f)||''; const url=URL.createObjectURL(f);
-        shots.push({id:crypto.randomUUID(), filename:f.name, format:inferFormat(f), mediaType:'video', previewURL:url, thumb:poster,
-          title:'', startTC:'', endTC:'', desc:'', camera:'', lens:'', take:'', notes:'', selected:false, starred:false, collapsed:true});
-      }
-    }
-    render(); document.querySelector('table')?.scrollIntoView({behavior:'smooth'});
-  }
-
-  async function replaceMedia(shot,file){
-    if(!file || !(file.type && (file.type.startsWith('image/')||file.type.startsWith('video/')))) return;
-    if(shot.mediaType==='video' && shot.previewURL) try{ URL.revokeObjectURL(shot.previewURL);}catch{}
-    if(shot.imageURL) { try{ URL.revokeObjectURL(shot.imageURL); }catch{} }
-    shot.filename=file.name; shot.format=inferFormat(file);
-    if(file.type.startsWith('image/')){
-      if (file.type === 'image/webp'){
-        const [dataUrl, anim] = await Promise.all([readAsDataURL(file), isAnimatedWebP(file)]);
-        const thumb=await downscale(dataUrl,1600,1600,.85);
-        shot.mediaType='image'; shot.thumb=thumb; delete shot.previewURL;
-        shot.isAnimated=!!anim;
-        shot.imageURL = URL.createObjectURL(file);
-      }else{
-        const dataUrl=await readAsDataURL(file); const thumb=await downscale(dataUrl,1600,1600,.85);
-        shot.mediaType='image'; shot.thumb=thumb; delete shot.previewURL; shot.isAnimated=false; if(shot.imageURL){ try{ URL.revokeObjectURL(shot.imageURL);}catch{} } delete shot.imageURL;
+        const dataUrl = await readAsDataURL(f);
+        const thumb  = await downscale(dataUrl,1600,1600,.85);
+        shots.push({
+          id: crypto.randomUUID(),
+          filename: f.name,
+          format: inferFormat(f),
+          mediaType: 'image',
+          thumb,
+          isAnimated: false,
+          title: '',
+          startTC: '',
+          endTC: '',
+          desc: '',
+          camera: '',
+          lens: '',
+          take: '',
+          notes: '',
+          selected: false,
+          starred: false,
+          collapsed: true
+        });
       }
     }else{
-      const poster=await videoPoster(file)||''; shot.mediaType='video'; shot.previewURL=URL.createObjectURL(file); shot.thumb=poster; shot.isAnimated=false; if(shot.imageURL){ try{ URL.revokeObjectURL(shot.imageURL);}catch{} } delete shot.imageURL;
+      const poster = await videoPoster(f) || '';
+      const url = URL.createObjectURL(f);
+      shots.push({
+        id: crypto.randomUUID(),
+        filename: f.name,
+        format: inferFormat(f),
+        mediaType: 'video',
+        previewURL: url,
+        thumb: poster,
+        title: '',
+        startTC: '',
+        endTC: '',
+        desc: '',
+        camera: '',
+        lens: '',
+        take: '',
+        notes: '',
+        selected: false,
+        starred: false,
+        collapsed: true
+      });
     }
   }
+  render(); document.querySelector('table')?.scrollIntoView({behavior:'smooth'});
+}
+
+  async function replaceMedia(shot,file){
+  if(!file || !(file.type && (file.type.startsWith('image/')||file.type.startsWith('video/')))) return;
+  if(shot.mediaType==='video' && shot.previewURL) try{ URL.revokeObjectURL(shot.previewURL);}catch{}
+  if(shot.imageURL) { try{ URL.revokeObjectURL(shot.imageURL); }catch{} }
+  shot.filename=file.name; shot.format=inferFormat(file);
+  if(file.type.startsWith('image/')){
+    if (file.type === 'image/webp'){
+      const [dataUrl, anim] = await Promise.all([readAsDataURL(file), isAnimatedWebP(file)]);
+      const thumb=await downscale(dataUrl,1600,1600,.85);
+      shot.mediaType='image'; shot.thumb=thumb; delete shot.previewURL;
+      shot.isAnimated=!!anim;
+      shot.imageURL = URL.createObjectURL(file);
+    }else{
+      const dataUrl=await readAsDataURL(file); const thumb=await downscale(dataUrl,1600,1600,.85);
+      shot.mediaType='image'; shot.thumb=thumb; delete shot.previewURL; shot.isAnimated=false;
+      if(shot.imageURL){ try{ URL.revokeObjectURL(shot.imageURL);}catch{} } delete shot.imageURL;
+    }
+  }else{
+    const poster=await videoPoster(file)||''; shot.mediaType='video'; shot.previewURL=URL.createObjectURL(file); shot.thumb=poster; shot.isAnimated=false;
+    if(shot.imageURL){ try{ URL.revokeObjectURL(shot.imageURL);}catch{} } delete shot.imageURL;
+  }
+}
 
   // selection
   selectAllBtn.addEventListener('click',()=>{ shots.forEach(s=>s.selected=true); render(); });
@@ -1006,101 +1147,173 @@ if(tag === 'ANIM') return true;
     importJSONInput.value='';
   });
 
-  // print
-  printBtn.addEventListener('click',()=>{
-    if(shots.length===0){ alert('No shots to print.'); return; }
-    const list=filteredShots(), w=window.open('','_blank');
-    const styles=`@page{size:A4;margin:14mm} body{font:12px/1.35 -apple-system,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;color:#111}
-      .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px} .row{break-inside:avoid;border:1px solid #d7dae0;border-radius:8px;padding:8px}
-      .head{display:flex;justify-content:space-between;align-items:center;font-weight:600;margin-bottom:6px;font-size:11px}
-      .thumb{width:100%;height:140px;object-fit:cover;background:#000;border-radius:4px}
-      .meta{font-size:10px;color:#333;margin-top:4px} .label{color:#6b7280} .desc{white-space:pre-wrap}`;
-    const title=document.title, time=new Date().toLocaleString();
-    const html=`<!doctype html><html><head><meta charset="utf-8"><title>${title} — Print</title><style>${styles}</style>
-<style>
-.webp-controls{display:flex;gap:.5rem;align-items:center;margin-top:.5rem;flex-wrap:wrap}
-.webp-controls button{padding:6px 10px;border-radius:6px;border:1px solid var(--border,#333);background:var(--btn-bg,#222);color:inherit}
-.webp-controls input[type=range]{width:240px}
-canvas.webpCanvas{max-width:100%;height:auto;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.15);}
-</style>
-</head><body>
-  <h1 style="font:600 16px/1.2 system-ui;margin:0 0 10px">${title}</h1>
-  <div style="font:12px/1.35 system-ui;color:#555;margin:0 0 12px">Printed: ${time} — ${list.length} items</div>
-  <div class="grid">
-  ${list.map((s,i)=>`
-    <div class="row">
-      <div class="head"><div>#${String(i+1).padStart(3,'0')} — ${escapeHtml(s.filename||'')}</div><div>${escapeHtml(s.format||'')}</div></div>
-      <img class="thumb" src="${(s.thumb||'')}" alt="thumb">
-      <div class="meta"><span class="label">Title:</span> ${escapeHtml(s.title||'')}</div>
-      <div class="meta"><span class="label">StartTC:</span> ${escapeHtml(s.startTC||'')} &nbsp; <span class="label">EndTC:</span> ${escapeHtml(s.endTC||'')}</div>
-      <div class="meta"><span class="label">Camera:</span> ${escapeHtml(s.camera||'')} &nbsp; <span class="label">Lens:</span> ${escapeHtml(s.lens||'')}</div>
-      <div class="meta"><span class="label">Take:</span> ${escapeHtml(s.take||'')}</div>
-      <div class="meta desc"><span class="label">Desc:</span> ${escapeHtml(s.desc||'')}</div>
-      <div class="meta"><span class="label">Notes:</span> ${escapeHtml(s.notes||'')}</div>
-    </div>`).join('')}
-  </div>
-</body></html>`;
-    // Load then print without embedding <script> in the HTML string
-    w.addEventListener('load', ()=>{ try{ w.focus(); w.print(); }catch(e){} });
-    w.document.open(); w.document.write(html); w.document.close();
-  });// shortcuts (disabled while typing)
-  document.addEventListener('keydown',(e)=>{
-    const tag=(e.target&&e.target.tagName||'').toLowerCase();
-    const typing=['input','textarea','select'].includes(tag) || (e.target && e.target.isContentEditable);
-    if(typing) return;
-    if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='a'){ e.preventDefault(); shots.forEach(s=>s.selected=true); render(); }
-    else if(e.key==='Delete'){ const any=shots.some(s=>s.selected); if(any){ shots=shots.filter(s=>!s.selected); render(); } }
-    else if(e.key.toLowerCase()==='p'){ e.preventDefault(); printBtn.click(); }
-  });
 
-  function escapeHtml(str){
-  return String(str).replace(/[&<>"']/g, function(s){
-    return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]);
-  });
-}
+// Ensure WebPPlayer exists early (runs before main script)
+(function(){
+  if ('WebPPlayer' in window) return;
+  window._webpPlayers = window._webpPlayers || new Map();
+  // Minimal WebP canvas player using WebCodecs
+  class WebPPlayer {
+    constructor(canvas, url){
+      this.canvas = canvas;
+      this.ctx = canvas.getContext('2d');
+      this.url = url;
+      this.frames = [];
+      this.durations = [];
+      this.size = null;
+      this.index = 0;
+      this.playing = false;
+      this.t = null;
+    }
+    async load(){
+      if (!('ImageDecoder' in window)) throw new Error('WebCodecs ImageDecoder not supported');
+      const res = await fetch(this.url);
+      const blob = await res.blob();
+      const data = new Uint8Array(await blob.arrayBuffer());
+      const decoder = new ImageDecoder({data, type:'image/webp'});
+      await decoder.tracks.ready;
+      const frameCount = decoder.tracks.selectedTrack?.frameCount ?? decoder.completeFrameCount ?? decoder.frameCount ?? 0;
+      const count = Math.max(frameCount || 0, 1);
+      this.frames = new Array(count);
+      this.durations = new Array(count);
+      for (let i=0; i<count; i++){
+        const {image} = await decoder.decode({frameIndex:i});
+        const bmp = await createImageBitmap(image);
+        this.frames[i] = bmp;
+        this.durations[i] = (typeof image.duration === 'number' && image.duration>0) ? image.duration : 100;
+        this.size = {w: image.displayWidth || bmp.width, h: image.displayHeight || bmp.height};
+        image.close();
+      }
+      decoder.close();
+      this.canvas.width = this.size.w;
+      this.canvas.height = this.size.h;
+      this.draw(0);
+    }
+    draw(i){
+      this.index = i|0;
+      if(!this.frames.length) return;
+      this.ctx.clearRect(0,0,this.canvas.width,this.canvas.height);
+      const frame = this.frames[this.index % this.frames.length];
+      if(frame) this.ctx.drawImage(frame, 0, 0);
+    }
+    play(onIndex){
+      if(this.playing || !this.frames.length) return;
+      this.playing = true;
+      const tick = () => {
+        if(!this.playing) return;
+        this.draw(this.index);
+        try{ onIndex && onIndex(this.index); }catch{}
+        const delay = this.durations[this.index] || 100;
+        this.index = (this.index + 1) % this.frames.length;
+        this.t = setTimeout(tick, delay);
+      };
+      tick();
+    }
+    pause(){
+      this.playing = false;
+      if(this.t){ clearTimeout(this.t); this.t = null; }
+    }
+    goto(i, onIndex){
+      this.pause();
+      this.draw(Math.max(0, Math.min(this.frames.length-1, i|0)));
+      try{ onIndex && onIndex(this.index); }catch{}
+    }
+    seek(i, onIndex){
+      this.index = Math.max(0, Math.min(this.frames.length-1, i|0));
+      this.draw(this.index);
+      try{ onIndex && onIndex(this.index); }catch{}
+    }
+    dispose(){
+      this.pause();
+      for(const bmp of this.frames){ try{ bmp.close?.(); }catch{} }
+      this.frames = [];
+    }
+  }
+  window.WebPPlayer = WebPPlayer;
+})();
+
+// print
+printBtn.addEventListener('click',()=>{
+  if(shots.length===0){ alert('No shots to print.'); return; }
+  const list=filteredShots(), w=window.open('','_blank');
+  const styles=`@page{size:A4;margin:14mm} body{font:12px/1.35 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;color:#111}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px} .card{break-inside:avoid;border:1px solid #d7dae0;border-radius:8px;padding:8px}
+    .head{display:flex;justify-content:space-between;align-items:center;font-weight:600;margin-bottom:6px;font-size:11px}
+    .thumb{width:100%;height:140px;object-fit:cover;background:#000;border-radius:4px}
+    .meta{font-size:10px;color:#333;margin-top:4px} .label{color:#6b7280} h1{font-size:14px;margin:0 0 8px} .note{font-size:10px;color:#555;margin-bottom:10px}
+    .desc{white-space:pre-wrap}`;
+  const title=document.title, time=new Date().toLocaleString();
+  const html=`<!doctype html><html><head><meta charset="utf-8"><title>${title} — Print</title><style>${styles}</style></head><body>
+    <h1>Shot List</h1><div class="note">Generated ${time}. Use your browser’s <b>Save as PDF</b>.</div><div class="grid">${
+      list.map((s,i)=>`
+        <div class="card">
+          <div class="head"><div>#${String(i+1).padStart(3,'0')} ${s.starred?'★':''} — ${escapeHtml(s.title||'')}</div><div>${
+            escapeHtml((s.startTC||'')+(s.endTC? ' — '+s.endTC : ''))}</div></div>
+          <img class="thumb" src="${s.thumb}" alt="thumb">
+          <div class="meta"><span class="label">File:</span> ${escapeHtml(s.filename)} &nbsp; <span class="label">Type:</span> ${escapeHtml(s.format||'')}</div>
+          <div class="meta"><span class="label">Camera:</span> ${escapeHtml(s.camera||'')} &nbsp; <span class="label">Lens:</span> ${escapeHtml(s.lens||'')}</div>
+          <div class="meta"><span class="label">Take:</span> ${escapeHtml(s.take||'')}</div>
+          <div class="meta desc"><span class="label">Desc:</span> ${escapeHtml(s.desc||'')}</div>
+          <div class="meta"><span class="label">Notes:</span> ${escapeHtml(s.notes||'')}</div>
+        </div>`).join('')}</div><script>setTimeout(()=>window.print(),400)<\/script></body></html>`;
+  w.document.open(); w.document.write(html); w.document.close();
+});
+
+
+// shortcuts (disabled while typing)
+document.addEventListener('keydown',(e)=>{
+  const tag=(e.target&&e.target.tagName||'').toLowerCase();
+  const typing=['input','textarea','select'].includes(tag) || (e.target && e.target.isContentEditable);
+  if(typing) return;
+  if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='a'){ e.preventDefault(); shots.forEach(s=>s.selected=true); render(); }
+  else if(e.key==='Delete'){ const any=shots.some(s=>s.selected); if(any){ shots=shots.filter(s=>!s.selected); render(); } }
+  else if(e.key.toLowerCase()==='p'){ e.preventDefault(); printBtn.click(); }
+});
+
+function escapeHtml(str){ return String(str).replace(/[&<>\"']/g,s=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[s])); }
 
 // --- Export CSV ---
 function csvEscape(v){
-  if (v === undefined || v === null) return '';
-  const s = String(v).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+if (v === undefined || v === null) return '';
+const s = String(v).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 function buildCsvRows(list){
-  const headers = [
-    'Index','Filename','Format','MediaType','Title','Description',
-    'Camera','Lens','Take','Notes','StartTC','EndTC','Starred'
-  ];
-  const rows = list.map((s, i) => [
-    i+1,
-    s.filename||'',
-    s.format||'',
-    s.mediaType||'',
-    s.title||'',
-    s.desc||'',
-    s.camera||'',
-    s.lens||'',
-    s.take||'',
-    s.notes||'',
-    s.startTC||'',
-    s.endTC||'',
-    s.starred ? 1 : 0
-  ]);
-  return [headers, ...rows];
+const headers = [
+  'Index','Filename','Format','MediaType','Title','Description',
+  'Camera','Lens','Take','Notes','StartTC','EndTC','Starred'
+];
+const rows = list.map((s, i) => [
+  i+1,
+  s.filename||'',
+  s.format||'',
+  s.mediaType||'',
+  s.title||'',
+  s.desc||'',
+  s.camera||'',
+  s.lens||'',
+  s.take||'',
+  s.notes||'',
+  s.startTC||'',
+  s.endTC||'',
+  s.starred ? 1 : 0
+]);
+return [headers, ...rows];
 }
 exportCSVBtn.addEventListener('click', (e)=>{
-  const list = (typeof filteredShots === 'function' ? filteredShots() : shots) || [];
-  if(!list.length){ alert('No shots to export.'); return; }
-  // Alt/Option-click to export ALL, otherwise export current filtered view
-  const out = (e && e.altKey) ? shots : list;
-  const rows = buildCsvRows(out);
-  const csv = rows.map(r => r.map(csvEscape).join(',')).join('\r\n');
-  const blob = new Blob(["\ufeff"+csv], {type: 'text/csv;charset=utf-8;'}); // BOM for Excel
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'shotlist.csv';
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 0);
+const list = (typeof filteredShots === 'function' ? filteredShots() : shots) || [];
+if(!list.length){ alert('No shots to export.'); return; }
+// Alt/Option-click to export ALL, otherwise export current filtered view
+const out = (e && e.altKey) ? shots : list;
+const rows = buildCsvRows(out);
+const csv = rows.map(r => r.map(csvEscape).join(',')).join('\r\n');
+const blob = new Blob(["\ufeff"+csv], {type: 'text/csv;charset=utf-8;'}); // BOM for Excel
+const a = document.createElement('a');
+a.href = URL.createObjectURL(blob);
+a.download = 'shotlist.csv';
+document.body.appendChild(a);
+a.click();
+setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 0);
 });
 
 </script>
