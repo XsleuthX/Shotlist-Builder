@@ -1171,24 +1171,82 @@ card.addEventListener('dragover',(e)=>{ e.preventDefault(); card.classList.add('
   });
 
   // export/import
-  exportJSONBtn.addEventListener('click',()=>{
-    const safe=shots.map(({previewURL, imageURL, ...rest})=>rest);
-    const data={meta:{app:'shotlist-maker',v:5,exported:new Date().toISOString()}, shots:safe};
-    const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}); const a=document.createElement('a');
+  
+exportJSONBtn.addEventListener('click', async ()=>{
+  const blobToDataURL = (blob)=> new Promise((res,rej)=>{
+    try{ const fr = new FileReader(); fr.onerror = rej; fr.onload = ()=> res(fr.result); fr.readAsDataURL(blob); }
+    catch(e){ rej(e); }
+  });
+
+  const outShots = [];
+  for (const s of shots){
+    const { previewURL, imageURL, ...rest } = s;
+    const out = { ...rest };
+    if (s.mediaType === 'image' && s.isAnimated && imageURL){
+      try{
+        const resp = await fetch(imageURL);
+        const blob = await resp.blob();
+        out.imageData = await blobToDataURL(blob);
+      }catch(e){
+        console.warn('Failed to embed WebP data for export', e);
+      }
+    }
+    outShots.push(out);
+  }
+  const data = { meta:{app:'shotlist-maker', v:6, exported:new Date().toISOString()}, shots: outShots };
+  const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='shotlist.json'; a.click();
+  setTimeout(()=> URL.revokeObjectURL(a.href), 0);
+});
+ const a=document.createElement('a');
     a.href=URL.createObjectURL(blob); a.download='shotlist.json'; a.click(); URL.revokeObjectURL(a.href);
-  });
-  importJSONInput.addEventListener('change',async (e)=>{
-    const f=e.target.files[0]; if(!f) return;
+  
+importJSONInput.addEventListener('change', async (e)=>{
+  const f=e.target.files[0]; if(!f) return;
+  const dataURLtoBlob = (dataURL)=>{
     try{
-      const data=JSON.parse(await f.text());
-      if(Array.isArray(data.shots)){
-        shots=data.shots.map(s=>({selected:false, starred:false, mediaType:'image', collapsed:true, ...s,
-          startTC:s.startTC||(s.timecode||''), format:s.format||guessFormatFromFilename(s.filename)}));
-        resetInfinite(); render();
-      }else alert('JSON missing "shots" array.');
-    }catch{ alert('Failed to import JSON.'); }
-    importJSONInput.value='';
-  });
+      const [meta, b64] = dataURL.split(',');
+      const mime = (meta.match(/^data:([^;]+);base64$/)||[])[1] || 'application/octet-stream';
+      const bin = atob(b64); const len = bin.length;
+      const u8 = new Uint8Array(len); for(let i=0;i<len;i++) u8[i] = bin.charCodeAt(i);
+      return new Blob([u8], {type: mime});
+    }catch(e){ console.warn('dataURLtoBlob failed', e); return null; }
+  };
+
+  try{
+    const data=JSON.parse(await f.text());
+    if(Array.isArray(data.shots)){
+      shots = data.shots.map((s)=>{
+        const base = {
+          selected:false, starred:false, collapsed:true,
+          startTC: s.startTC || s.timecode || '',
+          format: s.format || guessFormatFromFilename(s.filename||''),
+          mediaType: s.mediaType || 'image',
+          ...s
+        };
+        if (base.mediaType === 'image' && (base.isAnimated || base.format === 'WEBP') && base.imageData){
+          const blob = dataURLtoBlob(base.imageData);
+          if (blob){
+            try{ base.imageURL = URL.createObjectURL(blob); }catch{}
+          }
+        }
+        base.isAnimated = !!base.isAnimated;
+        base.webpFrame = Number.isInteger(base.webpFrame) ? base.webpFrame : 0;
+        base.webpTotalFrames = Number.isInteger(base.webpTotalFrames) ? base.webpTotalFrames : 0;
+        return base;
+      });
+      if (typeof resetInfinite === 'function') resetInfinite();
+      if (typeof render === 'function') render();
+    } else {
+      alert('JSON missing "shots" array.');
+    }
+  }catch(err){
+    console.error(err);
+    alert('Failed to import JSON.');
+  }
+  importJSONInput.value='';
+});
+
 
 
 
