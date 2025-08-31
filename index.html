@@ -44,10 +44,6 @@ header{position:sticky; top:0; z-index:5; backdrop-filter:saturate(140%) blur(8p
 h1{margin:0 0 6px; font-size:18px; letter-spacing:.2px}
 .sub{color:var(--ink-dim); margin-bottom:10px}
 
-
-/* Bridge variables for Templates modal */
-:root{ --panel: var(--bg-2); --text: var(--ink); --muted: var(--ink-dim); --accent: var(--accent); }
-
 /* Toolbar */
 .bar{display:flex; flex-wrap:wrap; gap:10px; align-items:center}
 .group{
@@ -426,8 +422,6 @@ rebindCanvas(newCanvas){
         <button id="exportJSON" class="btn"> Export JSON</button>
         <label class="filebtn btn"><input id="importJSON" type="file" accept="application/json"> Import JSON</label>
         <button id="exportCSV" class="btn"> Export CSV</button>
-      
-        <button id="btnTemplates" class="btn"> Templates</button>
       </div>
     </div>
   </div>
@@ -1187,332 +1181,18 @@ card.addEventListener('dragover',(e)=>{ e.preventDefault(); card.classList.add('
     const f=e.target.files[0]; if(!f) return;
     try{
       const data=JSON.parse(await f.text());
-      await applyTemplateData(data); 
-    }catch(err){
-    alert('Failed to import JSON: ' + err.message);
-  }
-  importJSONInput.value='';
-});
+      if(Array.isArray(data.shots)){
+        shots=data.shots.map(s=>({selected:false, starred:false, mediaType:'image', collapsed:true, ...s,
+          startTC:s.startTC||(s.timecode||''), format:s.format||guessFormatFromFilename(s.filename)}));
+        resetInfinite(); render();
+      }else alert('JSON missing "shots" array.');
+    }catch{ alert('Failed to import JSON.'); }
+    importJSONInput.value='';
+  });
 
-<!-- Templates adapter for Shot List Builder -->
-function applyShotTemplate(tpl){
-  try{
-    const defaults = tpl && (tpl.defaults || tpl.default) || {};
-    const selected = (Array.isArray(window.shots) ? window.shots.filter(s=>s.selected) : []);
-    const target = selected.length ? selected : (window.shots || []);
-    if (defaults && typeof defaults === 'object'){
-      target.forEach(s=>{
-        if(defaults.titlePrefix && !s.title) s.title = defaults.titlePrefix;
-        if(defaults.camera != null) s.camera = defaults.camera;
-        if(defaults.lens   != null) s.lens   = defaults.lens;
-        if(defaults.take   != null) s.take   = defaults.take;
-        if(defaults.notes  != null) s.notes  = defaults.notes;
-        if(defaults.starred!= null) s.starred= !!defaults.starred;
-      });
-    }
-    if (Array.isArray(tpl && tpl.shots) && tpl.shots.length){
-      const mode = tpl.mode || 'apply';
-      if (mode === 'replace'){
-        window.shots = tpl.shots.map((r,i)=> ({
-          id: crypto.randomUUID(),
-          filename: r.filename || '',
-          format: r.format || (typeof guessFormatFromFilename==='function' && r.filename ? guessFormatFromFilename(r.filename) : ''),
-          mediaType: r.mediaType || 'image',
-          thumb: r.thumb || '',
-          imageURL: '',
-          previewURL: '',
-          isAnimated: !!r.isAnimated,
-          webpFrame: Number.isInteger(r.webpFrame) ? r.webpFrame : 0,
-          webpTotalFrames: Number.isInteger(r.webpTotalFrames) ? r.webpTotalFrames : 0,
-          title: r.title || '',
-          startTC: r.startTC || '',
-          endTC: r.endTC || '',
-          desc: r.desc || '',
-          camera: (r.camera != null ? r.camera : (defaults.camera || '')),
-          lens:   (r.lens   != null ? r.lens   : (defaults.lens   || '')),
-          take:   (r.take   != null ? r.take   : (defaults.take   || '')),
-          notes:  (r.notes  != null ? r.notes  : (defaults.notes  || '')),
-          selected:false,
-          starred: (r.starred != null ? !!r.starred : !!defaults.starred),
-          collapsed:true
-        }));
-      } else {
-        for (let i=0;i<tpl.shots.length;i++){
-          const r = tpl.shots[i], s = target[i]; if(!s) break;
-          if(r.title   != null) s.title   = r.title;
-          if(r.startTC != null) s.startTC = r.startTC;
-          if(r.endTC   != null) s.endTC   = r.endTC;
-          if(r.desc    != null) s.desc    = r.desc;
-          if(r.camera  != null) s.camera  = r.camera;
-          if(r.lens    != null) s.lens    = r.lens;
-          if(r.take    != null) s.take    = r.take;
-          if(r.notes   != null) s.notes   = r.notes;
-          if(r.starred != null) s.starred = !!r.starred;
-        }
-      }
-    }
-    if (typeof window.render === 'function') window.render();
-  }catch(err){
-    console.warn('applyShotTemplate failed:', err);
-    alert('Failed to apply template: ' + (err && err.message ? err.message : err));
-  }
-}
-function loadBoardData(data){ applyShotTemplate(data); }
-</script>
 
-<script>
-  // ---------- Template / Import adapter ----------
-  function guessFormatFromName(name=''){
-    const n = name.toLowerCase();
-    if (/\.(mp4|mov|m4v|mkv|avi|webm)$/.test(n)) return 'video';
-    if (/\.(png|jpe?g|webp|gif|tiff?)$/.test(n)) return n.split('.').pop().toUpperCase();
-    return '';
-  }
-  function inferMediaType(obj){
-    const t = (obj.mediaType||obj.type||obj.mime||'').toString().toLowerCase();
-    if (t.startsWith('video') || /(mp4|mov|m4v|mkv|avi|webm)$/i.test(obj.filename||'')) return 'video';
-    return 'image';
-  }
-  function pick(...candidates){
-    for (const v of candidates){ if (v!==undefined && v!==null && String(v).trim()!=='') return v; }
-    return '';
-  }
-  function normalizeShot(raw){
-    // map common aliases -> our schema
-    const filename = pick(raw.filename, raw.name, raw.file, raw.path);
-    const format   = pick(raw.format, raw.mime, raw.type, guessFormatFromName(filename));
-    const mediaType= pick(raw.mediaType, inferMediaType({mediaType:raw.mediaType,type:raw.type,mime:raw.mime,filename}));
-    const thumb    = pick(raw.thumb, raw.thumbnail, raw.poster, raw.image, raw.src, raw.url); // can be data URL or relative path
-    const imageURL = pick(raw.imageURL, raw.imgURL, raw.srcURL);
-    const previewURL = pick(raw.previewURL, raw.videoURL, raw.srcVideo);
-  
-    return {
-      id: raw.id || crypto.randomUUID(),
-      filename,
-      format,
-      mediaType,
-      thumb,
-      imageURL,
-      previewURL,
-      // animated webp fields (if present, keep them)
-      isAnimated: !!raw.isAnimated,
-      webpFrame: Number.isFinite(raw.webpFrame) ? raw.webpFrame : 0,
-      webpTotalFrames: Number.isFinite(raw.webpTotalFrames) ? raw.webpTotalFrames : 0,
-  
-      title:   pick(raw.title, raw.name),
-      startTC: pick(raw.startTC, raw.tcStart, raw.timecode, raw.timeIn, raw.timein),
-      endTC:   pick(raw.endTC, raw.tcEnd, raw.timeOut, raw.timeout),
-      desc:    pick(raw.desc, raw.description),
-      camera:  pick(raw.camera, raw.cam),
-      lens:    pick(raw.lens),
-      take:    pick(raw.take),
-      notes:   pick(raw.notes, raw.note),
-  
-      selected: false,
-      starred:  !!(raw.starred || raw.favorite || raw.star),
-      collapsed: true
-    };
-  }
-  
-  function normalizeShotlistPayload(payload){
-    // Accept {shots:[...]}, or just [...]
-    let arr = [];
-    if (Array.isArray(payload)) arr = payload;
-    else if (payload && Array.isArray(payload.shots)) arr = payload.shots;
-    else if (payload && Array.isArray(payload.items)) arr = payload.items;
-    else arr = []; // unknown shape
-  
-    const normalized = arr.map(normalizeShot);
-    return normalized;
-  }
-  
-  // Apply into app state and re-render
-  async function applyTemplateData(payload){
-    try{
-      // Clean up any old object URLs
-      (window.shots||[]).forEach(s=>{
-        if (s.mediaType==='video' && s.previewURL) { try{ URL.revokeObjectURL(s.previewURL);}catch{} }
-        if (s.imageURL) { try{ URL.revokeObjectURL(s.imageURL);}catch{} }
-      });
-  
-      const list = normalizeShotlistPayload(payload);
-      if (!list.length){ alert('Template has no shots.'); return; }
-  
-      window.shots = list;
-      if (typeof resetInfinite === 'function') resetInfinite();
-      if (typeof render === 'function') render();
-    }catch(e){
-      console.error('Template apply failed:', e);
-      alert('Failed to apply template: '+e.message);
-    }
-  }
-  
-  // Expose the hook the Templates modal calls
-  window.loadBoardData = applyTemplateData;
-  </script>
 
-<!-- === Templates Modal (scoped) === -->
-<style id="tplModalStyles">
-  #tplOverlay{ position:fixed; inset:0; background:rgba(0,0,0,.55);
-    backdrop-filter: blur(8px) saturate(140%); -webkit-backdrop-filter: blur(8px) saturate(140%);
-    display:none; z-index:9999; }
-  #tplOverlay.show{ display:block; }
-  #tplOverlay .tpl-modal{ position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
-    width:min(1200px, 92vw); height:min(720px, 88vh);
-    background:var(--panel); color:var(--text);
-    border:1px solid rgba(255,255,255,.14); border-radius:16px; box-shadow:0 22px 60px rgba(0,0,0,.55);
-    display:grid; grid-template-rows:auto 1fr; }
-  #tplOverlay .tpl-header{ display:flex; gap:10px; align-items:center; padding:12px 14px; border-bottom:1px solid rgba(255,255,255,.12); }
-  #tplSearch{ flex:1; height:40px; border-radius:12px; border:1px solid rgba(255,255,255,.18);
-    background:rgba(255,255,255,.06); color:var(--text); padding:0 12px; outline:none; }
-  #tplClose{ border-radius:10px; border:1px solid rgba(255,255,255,.18); background:rgba(255,255,255,.08);
-    color:var(--text); padding:8px 12px; cursor:pointer; }
-  #tplOverlay .tpl-body{ display:grid; grid-template-columns:260px 1fr; min-height:0; }
-  #tplTreePane{ border-right:1px solid rgba(255,255,255,.10); padding:10px; overflow:auto; }
-  .tpl-tree .folder-row{ display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:8px; cursor:pointer; user-select:none; }
-  .tpl-tree .folder-row:hover{ background:rgba(255,255,255,.06); }
-  .tpl-tree .folder-row.active{ outline:2px solid var(--accent); outline-offset:2px; background:rgba(255,255,255,.08); }
-  .tpl-tree .caret{ display:inline-block; width:14px; text-align:center; opacity:.9; transform:rotate(0deg); transition:transform .15s ease; }
-  .tpl-tree .is-open>.folder-row .caret{ transform:rotate(90deg); }
-  .tpl-tree .count{ margin-left:auto; opacity:.8; font-size:12px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.16);
-    padding:2px 8px; border-radius:999px; }
-  .tpl-tree ul{ margin:0; padding-left:16px; list-style:none; } .tpl-tree li{ margin:2px 0; } .tpl-tree .recent-icon{ font-size:12px; opacity:.8; }
-  #tplGridPane{ padding:10px; overflow:auto; }
-  #tplGrid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap:12px; }
-  .tpl-card{ display:grid; grid-template-rows:auto 1fr auto; gap:8px; background:rgba(255,255,255,.06);
-    border:1px solid rgba(255,255,255,.10); border-radius:14px; padding:10px; }
-  .tpl-thumb{ height:140px; border-radius:10px; background:rgba(0,0,0,.4); display:grid; place-items:center; overflow:hidden; }
-  .tpl-thumb img{ width:100%; height:100%; object-fit:cover; display:block; }
-  .tpl-name{ font-weight:700; } .tpl-meta{ font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .tpl-actions{ display:flex; gap:8px; }
-  .tpl-btn{ flex:1 1 0; padding:8px 10px; border-radius:10px; border:1px solid rgba(255,255,255,.18); background:rgba(255,255,255,.08); color:var(--text); cursor:pointer; }
-  .tpl-btn:hover{ filter:brightness(1.08); }
-  @media (max-width:780px){ #tplOverlay .tpl-body{ grid-template-columns: 1fr; } #tplTreePane{ display:none; } }
-</style>
 
-<div id="tplOverlay" aria-hidden="true">
-  <div class="tpl-modal" role="dialog" aria-modal="true">
-    <div class="tpl-header">
-      <input id="tplSearch" type="search" placeholder="Search templates…"/>
-      <button id="tplClose">Close</button>
-    </div>
-    <div class="tpl-body">
-      <aside id="tplTreePane"><div class="tpl-tree" id="tplTree" aria-label="Folders"></div></aside>
-      <section id="tplGridPane"><div id="tplGrid"></div></section>
-    </div>
-  </div>
-</div>
-
-<script id="tplModalScript">
-(()=>{
-  const $ = (s, r=document)=>r.querySelector(s);
-  const grid = $('#tplGrid'), treeEl = $('#tplTree'), searchEl = $('#tplSearch'), overlay = $('#tplOverlay');
-  function openModal(){ overlay.classList.add('show'); searchEl && searchEl.focus(); }
-  function closeModal(){ overlay.classList.remove('show'); }
-  $('#tplClose')?.addEventListener('click', closeModal);
-  overlay?.addEventListener('click', (e)=>{ if(e.target===overlay) closeModal(); });
-  document.getElementById('btnTemplates')?.addEventListener('click', openModal);
-
-  const MANIFEST_URLS = ['templates.json','templates/templates.json','boards.json'];
-  async function fetchJSON(url){ const res = await fetch(url, {cache:'no-store'}); if(!res.ok) throw new Error('HTTP '+res.status+' for '+url); return res.json(); }
-  function detectGhRepo(){ try{ if(!location.hostname.endsWith('github.io')) return null;
-    const owner = location.hostname.split('.')[0]; const repo = location.pathname.replace(/^\/+/, '').split('/')[0] || null; return (owner && repo) ? {owner, repo} : null; }catch(_){ return null; } }
-  async function scanGithub(branch){
-    const repo = detectGhRepo(); if(!repo) throw new Error('Not GitHub Pages');
-    const {owner, repo:reponame} = repo;
-    const api = `https://api.github.com/repos/${owner}/${reponame}/git/trees/${branch}?recursive=1`;
-    const res = await fetch(api, {headers:{'Accept':'application/vnd.github+json'}, cache:'no-store'});
-    if(!res.ok) throw new Error('GitHub API '+res.status);
-    const data = await res.json();
-    return (data.tree||[]).filter(n => n.type==='blob' && /^templates\/.+\.json$/i.test(n.path)).map(n=>{
-      const file = n.path, parts = file.split('/'), base = parts.pop().replace(/\.json$/i,''), folder= parts.slice(1).join('/');
-      const name = base.replace(/[-_]/g,' ').replace(/\s+/g,' ').trim(); const thumbnail = file.replace(/\.json$/i,'.png');
-      return { name, file, folder, thumbnail };
-    });
-  }
-  async function listTemplates(){
-    try{ return await scanGithub('main'); }catch(_){}
-    try{ return await scanGithub('master'); }catch(_){}
-    for(const u of MANIFEST_URLS){
-      try{
-        const arr = await fetchJSON(u);
-        if (Array.isArray(arr) && arr.length){
-          return arr.filter(t => (t.file||'').endsWith('.json')).map(t=>{
-            const file = t.file;
-            const folder = (t.folder||t.dir||file.split('/').slice(1,-1).join('/')).replace(/^templates\/?/,'');
-            const name = t.name || file.split('/').pop().replace(/\.json$/,'');
-            const thumbnail = t.thumbnail || file.replace(/\.json$/i,'.png');
-            return { ...t, name, file, folder, thumbnail };
-          });
-        }
-      }catch(_){}
-    }
-    return [];
-  }
-
-  let allTemplates = [], selected = ''; const expanded = new Set(['']); const RECENT_KEY = 'tpl_recent_v1';
-  function rememberRecent(file){ try{ const now = Date.now();
-    const r = JSON.parse(localStorage.getItem(RECENT_KEY)||'[]').filter(x => x.file !== file);
-    r.unshift({file, ts: now}); localStorage.setItem(RECENT_KEY, JSON.stringify(r.slice(0,30))); }catch(_){ } }
-  function getRecent(){ try{ const r = JSON.parse(localStorage.getItem(RECENT_KEY)||'[]'); const files = new Set(r.map(x=>x.file));
-    return allTemplates.filter(t=>files.has(t.file)); }catch(_){ return []; } }
-  function getFolderPath(t){ const p = (t.folder||'').trim(); return p.replace(/^\.?\/*/,'').replace(/^templates\/?/,''); }
-  function buildTree(list){ const root = {name:'All templates', path:'', children:new Map(), count:0};
-    for(const t of list){ const parts = getFolderPath(t).split('/').filter(Boolean); let node = root; node.count++; let cur='';
-      for(const part of parts){ cur = cur ? `${cur}/${part}` : part; if(!node.children.has(part)) node.children.set(part, {name:part, path:cur, children:new Map(), count:0}); node = node.children.get(part); node.count++; } }
-    return root; }
-  function renderTree(){
-    const root = buildTree(allTemplates); treeEl.innerHTML = '';
-    const recent = getRecent();
-    if (recent.length){ const r = document.createElement('div'); r.className = 'folder-row' + (selected==='__recent__' ? ' active':'');
-      r.dataset.path='__recent__'; r.innerHTML = `<span class="recent-icon">★</span><span>Recent</span><span class="count">${recent.length}</span>`;
-      r.onclick = ()=>{ selected='__recent__'; renderTree(); renderGrid(); }; treeEl.appendChild(r); }
-    const allRow = document.createElement('div'); allRow.className = 'folder-row' + (selected==='' ? ' active' : ''); allRow.dataset.path='';
-    allRow.innerHTML = `<span class="caret">•</span><span>All templates</span><span class="count">${root.count}</span>`;
-    allRow.onclick = ()=>{ selected=''; renderTree(); renderGrid(); }; treeEl.appendChild(allRow);
-    const ul = document.createElement('ul');
-    function draw(node){ for(const [name, child] of node.children){ const li=document.createElement('li'); const row=document.createElement('div');
-      row.className='folder-row' + (selected===child.path ? ' active':'');
-      row.innerHTML = `<span class="caret">▸</span><span>${name}</span><span class="count">${child.count}</span>`;
-      li.appendChild(row); row.onclick = (e)=>{ e.stopPropagation(); if(expanded.has(child.path)) expanded.delete(child.path); else expanded.add(child.path); selected = child.path; renderTree(); renderGrid(); };
-      const hasKids = child.children && child.children.size; if(hasKids){ const sub=document.createElement('ul');
-        if(expanded.has(child.path)){ li.classList.add('is-open'); sub.style.display='block'; } else { sub.style.display='none'; }
-        li.appendChild(sub); draw({children: child.children}); } ul.appendChild(li); } }
-    draw(root); treeEl.appendChild(ul);
-  }
-  function matchQuery(t,q){ if(!q) return true; const hay = `${t.name||''} ${(t.tags||[]).join(' ')} ${t.file||''}`; return hay.toLowerCase().includes(q.toLowerCase()); }
-  function renderGrid(){
-    grid.innerHTML=''; const q=(searchEl && searchEl.value || '').trim();
-    let list = allTemplates.filter(t=>matchQuery(t,q));
-    if (selected==='__recent__'){ const rset = new Set(getRecent().map(x=>x.file)); list = list.filter(t=>rset.has(t.file)); }
-    else if (selected){ list = list.filter(t=>{ const p=getFolderPath(t); return p===selected || p.startsWith(selected+'/'); }); }
-    if(!list.length){ const div=document.createElement('div'); div.style.opacity='.75'; div.textContent='No templates found.'; grid.appendChild(div); return; }
-    for(const t of list){
-      const card=document.createElement('div'); card.className='tpl-card';
-      const thumb=document.createElement('div'); thumb.className='tpl-thumb';
-      if(t.thumbnail){ const img=document.createElement('img'); img.src=t.thumbnail; img.alt=t.name||'Template'; thumb.appendChild(img); } else { thumb.textContent='No preview'; }
-      const name=document.createElement('div'); name.className='tpl-name'; name.textContent=t.name || t.file;
-      const meta=document.createElement('div'); meta.className='tpl-meta'; meta.textContent = t.folder ? `templates/${t.folder}` : 'templates';
-      const actions=document.createElement('div'); actions.className='tpl-actions';
-      const loadBtn=document.createElement('button'); loadBtn.className='tpl-btn'; loadBtn.textContent='Load';
-      loadBtn.onclick = async ()=>{ try{ const data = await fetchJSON(t.file); if (typeof loadBoardData === 'function') loadBoardData(data); rememberRecent(t.file); overlay.classList.remove('show'); }catch(e){ alert('Failed to load '+t.file+': '+e.message); } };
-      const linkBtn=document.createElement('button'); linkBtn.className='tpl-btn'; linkBtn.textContent='Share link';
-      linkBtn.onclick = async ()=>{ const u = new URL(location.href); u.searchParams.set('src', t.file); try{ await navigator.clipboard.writeText(u.toString()); alert('Link copied!'); } catch(e){ prompt('Copy link:', u.toString()); } };
-      actions.appendChild(loadBtn); actions.appendChild(linkBtn);
-      card.appendChild(thumb); card.appendChild(name); card.appendChild(meta); card.appendChild(actions); grid.appendChild(card);
-    }
-  }
-  searchEl?.addEventListener('input', ()=> renderGrid());
-  (async function initTemplates(){
-    try{ allTemplates = await listTemplates(); }catch(e){ console.warn('Template discovery failed:', e); allTemplates = []; }
-    renderTree(); renderGrid();
-    try{ const sp = new URLSearchParams(location.search); const src = sp.get('src'); if (src){ const data = await fetchJSON(src); if (typeof loadBoardData === 'function') loadBoardData(data); } }catch(e){ console.warn('Auto-load via ?src failed:', e); }
-  })();
-})();
-</script>
-<!-- === /Templates Modal === -->
-
-<script>
 // print
 printBtn.addEventListener('click',()=>{
   if(shots.length===0){ alert('No shots to print.'); return; }
@@ -1609,7 +1289,7 @@ document.body.appendChild(a);
 a.click();
 setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 0);
 });
-</script>
 
+</script>
 </body>
 </html>
