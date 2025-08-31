@@ -1187,14 +1187,12 @@ card.addEventListener('dragover',(e)=>{ e.preventDefault(); card.classList.add('
     const f=e.target.files[0]; if(!f) return;
     try{
       const data=JSON.parse(await f.text());
-      if(Array.isArray(data.shots)){
-        shots=data.shots.map(s=>({selected:false, starred:false, mediaType:'image', collapsed:true, ...s,
-          startTC:s.startTC||(s.timecode||''), format:s.format||guessFormatFromFilename(s.filename)}));
-        resetInfinite(); render();
-      }else alert('JSON missing "shots" array.');
-    }catch{ alert('Failed to import JSON.'); }
-    importJSONInput.value='';
-  });
+      await applyTemplateData(data); 
+    }catch(err){
+    alert('Failed to import JSON: ' + err.message);
+  }
+  importJSONInput.value='';
+});
 
 <!-- Templates adapter for Shot List Builder -->
 function applyShotTemplate(tpl){
@@ -1261,6 +1259,97 @@ function applyShotTemplate(tpl){
 }
 function loadBoardData(data){ applyShotTemplate(data); }
 </script>
+
+<script>
+  // ---------- Template / Import adapter ----------
+  function guessFormatFromName(name=''){
+    const n = name.toLowerCase();
+    if (/\.(mp4|mov|m4v|mkv|avi|webm)$/.test(n)) return 'video';
+    if (/\.(png|jpe?g|webp|gif|tiff?)$/.test(n)) return n.split('.').pop().toUpperCase();
+    return '';
+  }
+  function inferMediaType(obj){
+    const t = (obj.mediaType||obj.type||obj.mime||'').toString().toLowerCase();
+    if (t.startsWith('video') || /(mp4|mov|m4v|mkv|avi|webm)$/i.test(obj.filename||'')) return 'video';
+    return 'image';
+  }
+  function pick(...candidates){
+    for (const v of candidates){ if (v!==undefined && v!==null && String(v).trim()!=='') return v; }
+    return '';
+  }
+  function normalizeShot(raw){
+    // map common aliases -> our schema
+    const filename = pick(raw.filename, raw.name, raw.file, raw.path);
+    const format   = pick(raw.format, raw.mime, raw.type, guessFormatFromName(filename));
+    const mediaType= pick(raw.mediaType, inferMediaType({mediaType:raw.mediaType,type:raw.type,mime:raw.mime,filename}));
+    const thumb    = pick(raw.thumb, raw.thumbnail, raw.poster, raw.image, raw.src, raw.url); // can be data URL or relative path
+    const imageURL = pick(raw.imageURL, raw.imgURL, raw.srcURL);
+    const previewURL = pick(raw.previewURL, raw.videoURL, raw.srcVideo);
+  
+    return {
+      id: raw.id || crypto.randomUUID(),
+      filename,
+      format,
+      mediaType,
+      thumb,
+      imageURL,
+      previewURL,
+      // animated webp fields (if present, keep them)
+      isAnimated: !!raw.isAnimated,
+      webpFrame: Number.isFinite(raw.webpFrame) ? raw.webpFrame : 0,
+      webpTotalFrames: Number.isFinite(raw.webpTotalFrames) ? raw.webpTotalFrames : 0,
+  
+      title:   pick(raw.title, raw.name),
+      startTC: pick(raw.startTC, raw.tcStart, raw.timecode, raw.timeIn, raw.timein),
+      endTC:   pick(raw.endTC, raw.tcEnd, raw.timeOut, raw.timeout),
+      desc:    pick(raw.desc, raw.description),
+      camera:  pick(raw.camera, raw.cam),
+      lens:    pick(raw.lens),
+      take:    pick(raw.take),
+      notes:   pick(raw.notes, raw.note),
+  
+      selected: false,
+      starred:  !!(raw.starred || raw.favorite || raw.star),
+      collapsed: true
+    };
+  }
+  
+  function normalizeShotlistPayload(payload){
+    // Accept {shots:[...]}, or just [...]
+    let arr = [];
+    if (Array.isArray(payload)) arr = payload;
+    else if (payload && Array.isArray(payload.shots)) arr = payload.shots;
+    else if (payload && Array.isArray(payload.items)) arr = payload.items;
+    else arr = []; // unknown shape
+  
+    const normalized = arr.map(normalizeShot);
+    return normalized;
+  }
+  
+  // Apply into app state and re-render
+  async function applyTemplateData(payload){
+    try{
+      // Clean up any old object URLs
+      (window.shots||[]).forEach(s=>{
+        if (s.mediaType==='video' && s.previewURL) { try{ URL.revokeObjectURL(s.previewURL);}catch{} }
+        if (s.imageURL) { try{ URL.revokeObjectURL(s.imageURL);}catch{} }
+      });
+  
+      const list = normalizeShotlistPayload(payload);
+      if (!list.length){ alert('Template has no shots.'); return; }
+  
+      window.shots = list;
+      if (typeof resetInfinite === 'function') resetInfinite();
+      if (typeof render === 'function') render();
+    }catch(e){
+      console.error('Template apply failed:', e);
+      alert('Failed to apply template: '+e.message);
+    }
+  }
+  
+  // Expose the hook the Templates modal calls
+  window.loadBoardData = applyTemplateData;
+  </script>
 
 <!-- === Templates Modal (scoped) === -->
 <style id="tplModalStyles">
