@@ -1182,7 +1182,7 @@ exportJSONBtn.addEventListener('click', async ()=>{
   for (const s of shots){
     const { previewURL, imageURL, ...rest } = s;
     const out = { ...rest };
-    if (s.mediaType === 'image' && s.isAnimated && imageURL){
+    if (s.mediaType === 'image' && (s.isAnimated || (String(s.format).toUpperCase()==='WEBP' && ((s.webpTotalFrames|0)>1 || (s.webpFrame|0)>0))) && imageURL){
       try{
         const resp = await fetch(imageURL);
         const blob = await resp.blob();
@@ -1198,9 +1198,6 @@ exportJSONBtn.addEventListener('click', async ()=>{
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='shotlist.json'; a.click();
   setTimeout(()=> URL.revokeObjectURL(a.href), 0);
 });
- const a=document.createElement('a');
-    a.href=URL.createObjectURL(blob); a.download='shotlist.json'; a.click(); URL.revokeObjectURL(a.href);
-  
 importJSONInput.addEventListener('change', async (e)=>{
   const f=e.target.files[0]; if(!f) return;
   const dataURLtoBlob = (dataURL)=>{
@@ -1224,10 +1221,10 @@ importJSONInput.addEventListener('change', async (e)=>{
           mediaType: s.mediaType || 'image',
           ...s
         };
-        if (base.mediaType === 'image' && (base.isAnimated || base.format === 'WEBP') && base.imageData){
+        if (base.mediaType === 'image' && base.imageData){
           const blob = dataURLtoBlob(base.imageData);
           if (blob){
-            try{ base.imageURL = URL.createObjectURL(blob); }catch{}
+            try{ base.imageURL = URL.createObjectURL(blob); base.isAnimated = true; if(!base.format) base.format='WEBP'; }catch{}
           }
         }
         base.isAnimated = !!base.isAnimated;
