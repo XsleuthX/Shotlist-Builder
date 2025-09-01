@@ -47,6 +47,7 @@ h1{margin:0 0 6px; font-size:18px; letter-spacing:.2px}
 
 /* Bridge variables for Templates modal */
 :root{ --panel: var(--bg-2); --text: var(--ink); --muted: var(--ink-dim); --accent: var(--accent); }
+
 /* Toolbar */
 .bar{display:flex; flex-wrap:wrap; gap:10px; align-items:center}
 .group{
@@ -265,14 +266,6 @@ canvas.webpCanvas{max-width:100%;height:auto;border-radius:8px;box-shadow:0 2px 
 <script>
 // Ensure WebPPlayer exists early (runs before main script)
 (function(){
-  function dataURLtoBlob(dataURL){
-    try{
-      const [meta,b64] = dataURL.split(',');
-      const mime = (meta.match(/^data:([^;]+);base64$/)||[])[1] || 'application/octet-stream';
-      const bin=atob(b64); const len=bin.length; const u8=new Uint8Array(len); for(let i=0;i<len;i++) u8[i]=bin.charCodeAt(i);
-      return new Blob([u8],{type:mime});
-    }catch(e){ console.warn('dataURLtoBlob failed', e); return null; }
-  }
   if ('WebPPlayer' in window) return;
   window._webpPlayers = window._webpPlayers || new Map();
   // Minimal WebP canvas player using WebCodecs
@@ -365,113 +358,6 @@ rebindCanvas(newCanvas){
   }
   window.WebPPlayer = WebPPlayer;
 })();
-
-async function gatherFilesFromDirHandle(dirHandle){
-  const files = [];
-  async function walk(handle){
-    try{
-      for await (const [name, h] of handle.entries()){
-        if (h.kind === 'file'){
-          try{
-            const f = await h.getFile();
-            if ((f.type||'').startsWith('video/')) files.push(f);
-          }catch{}
-        }else if (h.kind === 'directory'){
-          await walk(h);
-        }
-      }
-    }catch(e){ /* not supported or denied */ }
-  }
-  await walk(dirHandle);
-  return files;
-}
-
-function buildSigKey(sig){
-  if(!sig) return '';
-  const name = (sig.name||'').toLowerCase();
-  const size = sig.size||0;
-  const lm   = sig.lastModified||0;
-  const type = (sig.type||'').toLowerCase();
-  return [name, size, lm, type].join('|');
-}
-
-async function relinkFromFileList(files, onlyMissing){
-  const byStrong = new Map();
-  const byName   = new Map();
-  for (const f of files){
-    const key = buildSigKey({name:f.name,size:f.size,lastModified:f.lastModified,type:f.type});
-    byStrong.set(key, f);
-    byName.set((f.name||'').toLowerCase(), f);
-  }
-  let relinked = 0;
-  for (const s of shots){
-    if (s.mediaType !== 'video') continue;
-    if (onlyMissing && s.previewURL) continue;
-    const sig = s.sourceHint || {name:s.filename||''};
-    const strong = buildSigKey(sig);
-    let file = byStrong.get(strong);
-    if (!file){
-      file = byName.get((sig.name||s.filename||'').toLowerCase());
-    }
-    if (file){
-      try{
-        const url = URL.createObjectURL(file);
-        s.previewURL = url;
-        s.filename = file.name || s.filename;
-        s.format = inferFormat(file);
-        if (!s.thumb){
-          try{ s.thumb = await videoPoster(file) || ''; }catch{}
-        }
-        s.sourceHint = { name:file.name||'', size:(file.size||0), lastModified:(file.lastModified||0), type:file.type||'' };
-        relinked++;
-      }catch(e){ console.warn('Failed to relink', e); }
-    }
-  }
-  if (relinked){
-    render();
-    alert('Relinked ' + relinked + ' video(s).');
-  }else{
-    alert('No matching videos found in the selected folder.');
-  }
-}
-
-function countMissingVideos(){
-  return shots.filter(s => s.mediaType==='video' && !s.previewURL).length;
-}
-
-async function maybeAutoRelinkVideos(){
-  const missing = countMissingVideos();
-  if (!missing) return;
-  const go = confirm('This board has ' + missing + ' video(s) that need re-linking. Pick a folder to scan now?');
-  if (go){ await chooseFolderAndRelink({onlyMissing:true}); }
-}
-
-async function chooseFolderAndRelink(options){
-  options = options || {};
-  const onlyMissing = options.onlyMissing !== false; // default true
-  let files = [];
-
-  if (window.showDirectoryPicker){
-    try{
-      const dirHandle = await window.showDirectoryPicker({mode:'read'});
-      files = await gatherFilesFromDirHandle(dirHandle);
-    }catch(e){ /* user cancelled */ }
-  }
-  if (!files.length){
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.multiple = true;
-    input.accept = 'video/*';
-    input.webkitdirectory = true;
-    input.directory = true;
-    const picked = await new Promise(res => { input.onchange = ()=> res([...input.files]); input.click(); });
-    files = picked || [];
-  }
-  if (!files.length) return;
-  await relinkFromFileList(files, onlyMissing);
-}
-
-
 </script>
 
 <style id="drop-follow-box-style">
@@ -501,113 +387,6 @@ async function chooseFolderAndRelink(options){
       return box;
     };
   })();
-
-async function gatherFilesFromDirHandle(dirHandle){
-  const files = [];
-  async function walk(handle){
-    try{
-      for await (const [name, h] of handle.entries()){
-        if (h.kind === 'file'){
-          try{
-            const f = await h.getFile();
-            if ((f.type||'').startsWith('video/')) files.push(f);
-          }catch{}
-        }else if (h.kind === 'directory'){
-          await walk(h);
-        }
-      }
-    }catch(e){ /* not supported or denied */ }
-  }
-  await walk(dirHandle);
-  return files;
-}
-
-function buildSigKey(sig){
-  if(!sig) return '';
-  const name = (sig.name||'').toLowerCase();
-  const size = sig.size||0;
-  const lm   = sig.lastModified||0;
-  const type = (sig.type||'').toLowerCase();
-  return [name, size, lm, type].join('|');
-}
-
-async function relinkFromFileList(files, onlyMissing){
-  const byStrong = new Map();
-  const byName   = new Map();
-  for (const f of files){
-    const key = buildSigKey({name:f.name,size:f.size,lastModified:f.lastModified,type:f.type});
-    byStrong.set(key, f);
-    byName.set((f.name||'').toLowerCase(), f);
-  }
-  let relinked = 0;
-  for (const s of shots){
-    if (s.mediaType !== 'video') continue;
-    if (onlyMissing && s.previewURL) continue;
-    const sig = s.sourceHint || {name:s.filename||''};
-    const strong = buildSigKey(sig);
-    let file = byStrong.get(strong);
-    if (!file){
-      file = byName.get((sig.name||s.filename||'').toLowerCase());
-    }
-    if (file){
-      try{
-        const url = URL.createObjectURL(file);
-        s.previewURL = url;
-        s.filename = file.name || s.filename;
-        s.format = inferFormat(file);
-        if (!s.thumb){
-          try{ s.thumb = await videoPoster(file) || ''; }catch{}
-        }
-        s.sourceHint = { name:file.name||'', size:(file.size||0), lastModified:(file.lastModified||0), type:file.type||'' };
-        relinked++;
-      }catch(e){ console.warn('Failed to relink', e); }
-    }
-  }
-  if (relinked){
-    render();
-    alert('Relinked ' + relinked + ' video(s).');
-  }else{
-    alert('No matching videos found in the selected folder.');
-  }
-}
-
-function countMissingVideos(){
-  return shots.filter(s => s.mediaType==='video' && !s.previewURL).length;
-}
-
-async function maybeAutoRelinkVideos(){
-  const missing = countMissingVideos();
-  if (!missing) return;
-  const go = confirm('This board has ' + missing + ' video(s) that need re-linking. Pick a folder to scan now?');
-  if (go){ await chooseFolderAndRelink({onlyMissing:true}); }
-}
-
-async function chooseFolderAndRelink(options){
-  options = options || {};
-  const onlyMissing = options.onlyMissing !== false; // default true
-  let files = [];
-
-  if (window.showDirectoryPicker){
-    try{
-      const dirHandle = await window.showDirectoryPicker({mode:'read'});
-      files = await gatherFilesFromDirHandle(dirHandle);
-    }catch(e){ /* user cancelled */ }
-  }
-  if (!files.length){
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.multiple = true;
-    input.accept = 'video/*';
-    input.webkitdirectory = true;
-    input.directory = true;
-    const picked = await new Promise(res => { input.onchange = ()=> res([...input.files]); input.click(); });
-    files = picked || [];
-  }
-  if (!files.length) return;
-  await relinkFromFileList(files, onlyMissing);
-}
-
-
 </script>
 
 <header>
@@ -618,20 +397,8 @@ async function chooseFolderAndRelink(options){
     <div class="bar">
       <div class="group">
         <label class="filebtn btn"><input id="file" type="file" accept="image/*,video/*" multiple> Add Shots</label>
-        <button id="selectAll" class="btn">Select All</button>
-        <button id="deselectAll" class="btn muted">Deselect</button>
-        <button id="deleteSel" class="btn danger">Delete Selected</button>
         <button id="clearAll" class="btn danger">Clear All</button>
       </div>
-
-      <div class="group">
-        <button id="btnTemplates" class="btn"> Folders</button>
-        <button id="exportJSON" class="btn"> Export JSON</button>
-        <label class="filebtn btn"><input id="importJSON" type="file" accept="application/json"> Import JSON</label>
-        <button id="relinkVideos" class="btn"> Relink Videos</button>
-      </div>
-
-      <div class="spacer"></div>
 
       <div class="group">
         <span class="label">Mode</span>
@@ -640,14 +407,28 @@ async function chooseFolderAndRelink(options){
           <button id="modePage">Page</button>
         </div>
         <label class="mini" style="display:inline-flex; gap:6px; align-items:center; margin-left:8px">
-          <input type="checkbox" id="starFilter"> ★ Star Filter
+          <input type="checkbox" id="starFilter"> ★ Show starred only
         </label>
         <button id="collapseAllCards" class="btn" disabled title="Collapse all cards in Page Mode">Collapse All</button>
         <button id="expandAllCards" class="btn" disabled title="Expand all cards in Page Mode">Expand All</button>
-        <button id="printBtn" class="btn ok"> Print / Save to PDF</button>
-        <button id="exportCSV" class="btn ok"> Export CSV</butto>
       </div>
-        
+
+      <div class="group">
+        <button id="selectAll" class="btn">Select All</button>
+        <button id="deselectAll" class="btn muted">Deselect</button>
+        <button id="deleteSel" class="btn danger">Delete Selected</button>
+      </div>
+
+      <div class="spacer"></div>
+
+      <div class="group">
+        <button id="printBtn" class="btn ok"> Print / Save to PDF</button>
+        <button id="exportJSON" class="btn"> Export JSON</button>
+        <label class="filebtn btn"><input id="importJSON" type="file" accept="application/json"> Import JSON</label>
+        <button id="exportCSV" class="btn"> Export CSV</button>
+      
+        <button id="btnTemplates" class="btn"> Templates</button>
+      </div>
     </div>
   </div>
 </header>
@@ -655,6 +436,7 @@ async function chooseFolderAndRelink(options){
 <main>
   <div id="dz" class="dropzone">
     <div><strong>Drop your screenshots here</strong> or use <span class="kbd">Add Shots</span>.</div>
+    <div class="mini" style="margin-top:6px">Tips: you can drag rows/cards to reorder. Use the print button to generate a print-friendly view and “Save as PDF”.</div>
   </div>
 
   <!-- Collapsible Batch Tools -->
@@ -842,7 +624,6 @@ async function chooseFolderAndRelink(options){
   const exportJSONBtn = document.getElementById('exportJSON');
   const importJSONInput = document.getElementById('importJSON');
   const exportCSVBtn = document.getElementById('exportCSV');
-  const relinkVideosBtn = document.getElementById('relinkVideos');
   const parseTCBtn = document.getElementById('parseTC');
   const applyBatchBtn = document.getElementById('applyBatch');
   const batchTitle = document.getElementById('batchTitle');
@@ -1221,10 +1002,17 @@ card.addEventListener('dragleave',()=>{
   const box = ensureDropBox();
   box.style.display = 'none';
 });
-card.addEventListener('drop',(e)=>{ e.preventDefault(); card.classList.remove('ghost'); reorderById(e.dataTransfer.getData('text/plain'), s.id); });
+card.addEventListener('drop',(e)=>{
+  e.preventDefault();
+  const box = ensureDropBox();
+  box.style.display = 'none';
+  reorderById(e.dataTransfer.getData('text/plain'), s.id);
+});
+card.addEventListener('dragover',(e)=>{ e.preventDefault(); card.classList.add('ghost'); });
+      card.addEventListener('dragleave',()=> card.classList.remove('ghost'));
+      card.addEventListener('drop',(e)=>{ e.preventDefault(); card.classList.remove('ghost'); reorderById(e.dataTransfer.getData('text/plain'), s.id); });
 
-
-  card.querySelector('.del').addEventListener('click',()=> removeShot(s.id));
+      card.querySelector('.del').addEventListener('click',()=> removeShot(s.id));
       pageContainer.appendChild(card);
     });
   }
@@ -1233,6 +1021,14 @@ card.addEventListener('drop',(e)=>{ e.preventDefault(); card.classList.remove('g
     if(!srcId||srcId===destId) return;
     const from=shots.findIndex(x=>x.id===srcId), to=shots.findIndex(x=>x.id===destId);
     if(from<0||to<0) return; const [moved]=shots.splice(from,1); shots.splice(to,0,moved); render();
+  }
+  function removeShot(id){
+    const s=shots.find(x=>x.id===id);
+    if(s){
+      if(s.mediaType==='video'&&s.previewURL) try{ URL.revokeObjectURL(s.previewURL);}catch{}
+      if(s.imageURL) try{ URL.revokeObjectURL(s.imageURL);}catch{}
+    }
+    shots=shots.filter(x=>x.id!==id); render();
   }
 
   // ingest
@@ -1304,7 +1100,6 @@ card.addEventListener('drop',(e)=>{ e.preventDefault(); card.classList.remove('g
         filename: f.name,
         format: inferFormat(f),
         mediaType: 'video',
-        sourceHint: { name: f.name || '', size: (f.size||0), lastModified: (f.lastModified||0), type: f.type || '' },
         previewURL: url,
         thumb: poster,
         webpFrame: 0,
@@ -1348,7 +1143,6 @@ card.addEventListener('drop',(e)=>{ e.preventDefault(); card.classList.remove('g
     }
   }else{
     const poster=await videoPoster(file)||''; shot.mediaType='video'; shot.previewURL=URL.createObjectURL(file); shot.thumb=poster; shot.isAnimated=false; shot.webpFrame=0; shot.webpTotalFrames=0;
-    shot.sourceHint = { name: file.name || '', size: (file.size||0), lastModified: (file.lastModified||0), type: file.type || '' }; shot.webpFrame=0; shot.webpTotalFrames=0;
     if(shot.imageURL){ try{ URL.revokeObjectURL(shot.imageURL);}catch{} } delete shot.imageURL;
   }
 }
@@ -1357,7 +1151,6 @@ card.addEventListener('drop',(e)=>{ e.preventDefault(); card.classList.remove('g
   selectAllBtn.addEventListener('click',()=>{ shots.forEach(s=>s.selected=true); render(); });
   deselectAllBtn.addEventListener('click',()=>{ shots.forEach(s=>s.selected=false); render(); });
   deleteSelBtn.addEventListener('click',()=>{ shots.filter(s=>s.selected).map(s=>s.id).forEach(removeShot); });
-  relinkVideosBtn.addEventListener('click',()=>{ chooseFolderAndRelink({onlyMissing:false}); });
   clearAllBtn.addEventListener('click',()=>{ if(confirm('Remove all items?')){ shots.forEach(s=>{ if(s.mediaType==='video'&&s.previewURL) try{URL.revokeObjectURL(s.previewURL);}catch{}; if(s.imageURL) try{URL.revokeObjectURL(s.imageURL);}catch{} }); shots=[]; render(); }});
 
   // batch replace (not append)
@@ -1384,83 +1177,179 @@ card.addEventListener('drop',(e)=>{ e.preventDefault(); card.classList.remove('g
   });
 
   // export/import
-  
-exportJSONBtn.addEventListener('click', async ()=>{
-  const blobToDataURL = (blob)=> new Promise((res,rej)=>{
-    try{ const fr = new FileReader(); fr.onerror = rej; fr.onload = ()=> res(fr.result); fr.readAsDataURL(blob); }
-    catch(e){ rej(e); }
+  exportJSONBtn.addEventListener('click',()=>{
+    const safe=shots.map(({previewURL, imageURL, ...rest})=>rest);
+    const data={meta:{app:'shotlist-maker',v:5,exported:new Date().toISOString()}, shots:safe};
+    const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}); const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob); a.download='shotlist.json'; a.click(); URL.revokeObjectURL(a.href);
   });
-  const outShots = [];
-  for (const s of shots){
-    const { previewURL, imageURL, ...rest } = s;
-    const out = { ...rest };
-    if (s.mediaType === 'video' && s.sourceHint){ out.sourceHint = s.sourceHint; }
-    // Embed animated WebP bytes so import can restore playback
-    if (s.mediaType === 'image' && (s.isAnimated || (String(s.format).toUpperCase()==='WEBP' && ((s.webpTotalFrames|0)>1 || (s.webpFrame|0)>0))) && imageURL){
-      try{
-        const resp = await fetch(imageURL);
-        const blob = await resp.blob();
-        out.imageData = await blobToDataURL(blob);
-      }catch(e){ console.warn('Failed to embed WebP data for export', e); }
-    }
-    outShots.push(out);
-  }
-  const data = { meta:{app:'shotlist-maker', v:6, exported:new Date().toISOString()}, shots: outShots };
-  const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
-  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='shotlist.json'; a.click();
-  setTimeout(()=> URL.revokeObjectURL(a.href), 0);
-});
-  
-importJSONInput.addEventListener('change', async (e)=>{
-  const f=e.target.files[0]; if(!f) return;
-  const dataURLtoBlob = (dataURL)=>{
+  importJSONInput.addEventListener('change',async (e)=>{
+    const f=e.target.files[0]; if(!f) return;
     try{
-      const [meta, b64] = dataURL.split(',');
-      const mime = (meta.match(/^data:([^;]+);base64$/)||[])[1] || 'application/octet-stream';
-      const bin = atob(b64); const len = bin.length;
-      const u8 = new Uint8Array(len); for(let i=0;i<len;i++) u8[i] = bin.charCodeAt(i);
-      return new Blob([u8], {type: mime});
-    }catch(e){ console.warn('dataURLtoBlob failed', e); return null; }
-  };
-  try{
-    const data=JSON.parse(await f.text());
-    if(Array.isArray(data.shots)){
-      shots = data.shots.map((s)=>{
-        const base = {
-          sourceHint: s.sourceHint || { name: s.filename || '', size: s.size || 0, lastModified: s.lastModified || 0, type: s.type || '' },
-          selected:false, starred:!!s.starred, collapsed:true,
-          startTC: s.startTC || s.timecode || '',
-          format: s.format || (typeof guessFormatFromFilename==='function' && s.filename ? guessFormatFromFilename(s.filename) : s.format),
-          mediaType: s.mediaType || 'image',
-          ...s
-        };
-        base.id = base.id || (typeof crypto!=='undefined' && crypto.randomUUID ? crypto.randomUUID() : ('id_'+Math.random().toString(36).slice(2)));
-// Restore animated WebP from embedded data
-        if (base.mediaType === 'image' && base.imageData){
-          const blob = dataURLtoBlob(base.imageData);
-          if (blob){
-            try{ base.imageURL = URL.createObjectURL(blob); base.isAnimated = true; if(!base.format) base.format='WEBP'; }catch{}
-          }
-        }
-        base.isAnimated = !!base.isAnimated;
-        base.webpFrame = Number.isInteger(base.webpFrame) ? base.webpFrame : 0;
-        base.webpTotalFrames = Number.isInteger(base.webpTotalFrames) ? base.webpTotalFrames : 0;
-        return base;
-      });
-      if (typeof resetInfinite === 'function') resetInfinite();
-      if (typeof render === 'function') render();
-      await maybeAutoRelinkVideos();
-    } else {
-      alert('JSON missing "shots" array.');
-    }
-  }catch(err){
-    console.error(err);
-    alert('Failed to import JSON.');
+      const data=JSON.parse(await f.text());
+      await applyTemplateData(data); 
+    }catch(err){
+    alert('Failed to import JSON: ' + err.message);
   }
   importJSONInput.value='';
 });
 
+<!-- Templates adapter for Shot List Builder -->
+function applyShotTemplate(tpl){
+  try{
+    const defaults = tpl && (tpl.defaults || tpl.default) || {};
+    const selected = (Array.isArray(window.shots) ? window.shots.filter(s=>s.selected) : []);
+    const target = selected.length ? selected : (window.shots || []);
+    if (defaults && typeof defaults === 'object'){
+      target.forEach(s=>{
+        if(defaults.titlePrefix && !s.title) s.title = defaults.titlePrefix;
+        if(defaults.camera != null) s.camera = defaults.camera;
+        if(defaults.lens   != null) s.lens   = defaults.lens;
+        if(defaults.take   != null) s.take   = defaults.take;
+        if(defaults.notes  != null) s.notes  = defaults.notes;
+        if(defaults.starred!= null) s.starred= !!defaults.starred;
+      });
+    }
+    if (Array.isArray(tpl && tpl.shots) && tpl.shots.length){
+      const mode = tpl.mode || 'apply';
+      if (mode === 'replace'){
+        window.shots = tpl.shots.map((r,i)=> ({
+          id: crypto.randomUUID(),
+          filename: r.filename || '',
+          format: r.format || (typeof guessFormatFromFilename==='function' && r.filename ? guessFormatFromFilename(r.filename) : ''),
+          mediaType: r.mediaType || 'image',
+          thumb: r.thumb || '',
+          imageURL: '',
+          previewURL: '',
+          isAnimated: !!r.isAnimated,
+          webpFrame: Number.isInteger(r.webpFrame) ? r.webpFrame : 0,
+          webpTotalFrames: Number.isInteger(r.webpTotalFrames) ? r.webpTotalFrames : 0,
+          title: r.title || '',
+          startTC: r.startTC || '',
+          endTC: r.endTC || '',
+          desc: r.desc || '',
+          camera: (r.camera != null ? r.camera : (defaults.camera || '')),
+          lens:   (r.lens   != null ? r.lens   : (defaults.lens   || '')),
+          take:   (r.take   != null ? r.take   : (defaults.take   || '')),
+          notes:  (r.notes  != null ? r.notes  : (defaults.notes  || '')),
+          selected:false,
+          starred: (r.starred != null ? !!r.starred : !!defaults.starred),
+          collapsed:true
+        }));
+      } else {
+        for (let i=0;i<tpl.shots.length;i++){
+          const r = tpl.shots[i], s = target[i]; if(!s) break;
+          if(r.title   != null) s.title   = r.title;
+          if(r.startTC != null) s.startTC = r.startTC;
+          if(r.endTC   != null) s.endTC   = r.endTC;
+          if(r.desc    != null) s.desc    = r.desc;
+          if(r.camera  != null) s.camera  = r.camera;
+          if(r.lens    != null) s.lens    = r.lens;
+          if(r.take    != null) s.take    = r.take;
+          if(r.notes   != null) s.notes   = r.notes;
+          if(r.starred != null) s.starred = !!r.starred;
+        }
+      }
+    }
+    if (typeof window.render === 'function') window.render();
+  }catch(err){
+    console.warn('applyShotTemplate failed:', err);
+    alert('Failed to apply template: ' + (err && err.message ? err.message : err));
+  }
+}
+function loadBoardData(data){ applyShotTemplate(data); }
 </script>
+
+<script>
+  // ---------- Template / Import adapter ----------
+  function guessFormatFromName(name=''){
+    const n = name.toLowerCase();
+    if (/\.(mp4|mov|m4v|mkv|avi|webm)$/.test(n)) return 'video';
+    if (/\.(png|jpe?g|webp|gif|tiff?)$/.test(n)) return n.split('.').pop().toUpperCase();
+    return '';
+  }
+  function inferMediaType(obj){
+    const t = (obj.mediaType||obj.type||obj.mime||'').toString().toLowerCase();
+    if (t.startsWith('video') || /(mp4|mov|m4v|mkv|avi|webm)$/i.test(obj.filename||'')) return 'video';
+    return 'image';
+  }
+  function pick(...candidates){
+    for (const v of candidates){ if (v!==undefined && v!==null && String(v).trim()!=='') return v; }
+    return '';
+  }
+  function normalizeShot(raw){
+    // map common aliases -> our schema
+    const filename = pick(raw.filename, raw.name, raw.file, raw.path);
+    const format   = pick(raw.format, raw.mime, raw.type, guessFormatFromName(filename));
+    const mediaType= pick(raw.mediaType, inferMediaType({mediaType:raw.mediaType,type:raw.type,mime:raw.mime,filename}));
+    const thumb    = pick(raw.thumb, raw.thumbnail, raw.poster, raw.image, raw.src, raw.url); // can be data URL or relative path
+    const imageURL = pick(raw.imageURL, raw.imgURL, raw.srcURL);
+    const previewURL = pick(raw.previewURL, raw.videoURL, raw.srcVideo);
+  
+    return {
+      id: raw.id || crypto.randomUUID(),
+      filename,
+      format,
+      mediaType,
+      thumb,
+      imageURL,
+      previewURL,
+      // animated webp fields (if present, keep them)
+      isAnimated: !!raw.isAnimated,
+      webpFrame: Number.isFinite(raw.webpFrame) ? raw.webpFrame : 0,
+      webpTotalFrames: Number.isFinite(raw.webpTotalFrames) ? raw.webpTotalFrames : 0,
+  
+      title:   pick(raw.title, raw.name),
+      startTC: pick(raw.startTC, raw.tcStart, raw.timecode, raw.timeIn, raw.timein),
+      endTC:   pick(raw.endTC, raw.tcEnd, raw.timeOut, raw.timeout),
+      desc:    pick(raw.desc, raw.description),
+      camera:  pick(raw.camera, raw.cam),
+      lens:    pick(raw.lens),
+      take:    pick(raw.take),
+      notes:   pick(raw.notes, raw.note),
+  
+      selected: false,
+      starred:  !!(raw.starred || raw.favorite || raw.star),
+      collapsed: true
+    };
+  }
+  
+  function normalizeShotlistPayload(payload){
+    // Accept {shots:[...]}, or just [...]
+    let arr = [];
+    if (Array.isArray(payload)) arr = payload;
+    else if (payload && Array.isArray(payload.shots)) arr = payload.shots;
+    else if (payload && Array.isArray(payload.items)) arr = payload.items;
+    else arr = []; // unknown shape
+  
+    const normalized = arr.map(normalizeShot);
+    return normalized;
+  }
+  
+  // Apply into app state and re-render
+  async function applyTemplateData(payload){
+    try{
+      // Clean up any old object URLs
+      (window.shots||[]).forEach(s=>{
+        if (s.mediaType==='video' && s.previewURL) { try{ URL.revokeObjectURL(s.previewURL);}catch{} }
+        if (s.imageURL) { try{ URL.revokeObjectURL(s.imageURL);}catch{} }
+      });
+  
+      const list = normalizeShotlistPayload(payload);
+      if (!list.length){ alert('Template has no shots.'); return; }
+  
+      window.shots = list;
+      if (typeof resetInfinite === 'function') resetInfinite();
+      if (typeof render === 'function') render();
+    }catch(e){
+      console.error('Template apply failed:', e);
+      alert('Failed to apply template: '+e.message);
+    }
+  }
+  
+  // Expose the hook the Templates modal calls
+  window.loadBoardData = applyTemplateData;
+  </script>
 
 <!-- === Templates Modal (scoped) === -->
 <style id="tplModalStyles">
@@ -1525,7 +1414,7 @@ importJSONInput.addEventListener('change', async (e)=>{
   document.getElementById('btnTemplates')?.addEventListener('click', openModal);
 
   const MANIFEST_URLS = ['templates.json','templates/templates.json','boards.json'];
-  function resolveTemplateURL(file){if(/^https?:\/\//i.test(file)) return file;const repo = detectGhRepo();if(repo) return file;const GH_REPO = window.TPL_GH_REPO||null; const GH_BRANCH = window.TPL_GH_BRANCH||'main';if(GH_REPO){ const clean=String(file).replace(/^\.?\//,'');return `https://raw.githubusercontent.com/${GH_REPO}/${GH_BRANCH}/${clean}`;}return file;}async function fetchJSON(url){ const res = await fetch(url, {cache:'no-store'}); if(!res.ok) throw new Error('HTTP '+res.status+' for '+url); return res.json(); }
+  async function fetchJSON(url){ const res = await fetch(url, {cache:'no-store'}); if(!res.ok) throw new Error('HTTP '+res.status+' for '+url); return res.json(); }
   function detectGhRepo(){ try{ if(!location.hostname.endsWith('github.io')) return null;
     const owner = location.hostname.split('.')[0]; const repo = location.pathname.replace(/^\/+/, '').split('/')[0] || null; return (owner && repo) ? {owner, repo} : null; }catch(_){ return null; } }
   async function scanGithub(branch){
@@ -1548,102 +1437,13 @@ importJSONInput.addEventListener('change', async (e)=>{
       try{
         const arr = await fetchJSON(u);
         if (Array.isArray(arr) && arr.length){
-          return arr.filter(t => (t.file||'').endsWith('.json')).map(t=>{const file = t.file;const folder = (t.folder||t.dir||file.split('/').slice(1,-1).join('/')).replace(/^templates\/?/,'');const name = t.name || file.split('/').pop().replace(/\.json$/,'');const thumbnail = t.thumbnail || file.replace(/\.json$/i,'.png');return { ...t, name, file, folder, thumbnail, url: resolveTemplateURL(file) };});
-        }
-      }catch(_){}
-    }
-    return [];
-  }
-
-    // Normalize any template shape to a full board for loadBoardData
-  function normalizeToBoardData(raw){
-    let data = raw;
-    const unwrap = (obj)=>{
-      if (!obj || typeof obj !== 'object') return obj;
-      if (Array.isArray(obj)) return obj;
-      const carriers = ['tpl','template','board','data','payload'];
-      for (const k of carriers){
-        const v = obj[k];
-        if (v && typeof v === 'object' && Array.isArray(v.shots)) return v;
-      }
-      for (const v of Object.values(obj)){
-        if (v && typeof v === 'object' && Array.isArray(v.shots)) return v;
-      }
-      return obj;
-    };
-    data = unwrap(data);
-    if (Array.isArray(data)) data = { shots: data };
-    if (!(data && Array.isArray(data.shots))) throw new Error('Template JSON has no shots[]');
-    if (!(data.meta && data.meta.app === 'shotlist-maker')){
-      data = { meta:{ app:'shotlist-maker', source:'template' }, shots: data.shots };
-    }
-    return data;
-  }
-
-// helpers (keep near your modal code)
-  function resolveTemplateURL(file){
-  if (/^https?:\/\//i.test(file)) return file;
-  try{ if (location.hostname.endsWith('github.io')) return file; }catch(_){}
-  const GH_REPO = window.TPL_GH_REPO || null;       // e.g. 'xsleuthx/Shotlist-Builder'
-  const GH_BRANCH = window.TPL_GH_BRANCH || 'main';
-  if (GH_REPO){
-    const clean = String(file).replace(/^\.?\//,'');
-    return `https://raw.githubusercontent.com/${GH_REPO}/${GH_BRANCH}/${clean}`;
-  }
-  return file; // same-origin fallback
-}
-
-  function detectGhRepo(){ try{ if(!location.hostname.endsWith('github.io')) return null;
-  const owner = location.hostname.split('.')[0]; const repo = location.pathname.replace(/^\/+/, '').split('/')[0] || null; return (owner && repo) ? {owner, repo} : null; }catch(_){ return null; } }
-
-  async function scanGithub(branch){
-    const repo = detectGhRepo(); if(!repo) throw new Error('Not GitHub Pages');
-    const {owner, repo:reponame} = repo;
-    const api = `https://api.github.com/repos/${owner}/${reponame}/git/trees/${branch}?recursive=1`;
-    const res = await fetch(api, {headers:{'Accept':'application/vnd.github+json'}, cache:'no-store'});
-    if(!res.ok) throw new Error('GitHub API '+res.status);
-    const data = await res.json();
-    return (data.tree||[]).filter(n => n.type==='blob' && /^templates\/.+\.json$/i.test(n.path)).map(n=>{
-      const file = n.path;
-      const parts = file.split('/');
-      const base  = parts.pop().replace(/\.json$/i,'');
-      const folder = parts.slice(1).join('/');
-      const name = base.replace(/[-_]/g,' ').replace(/\s+/g,' ').trim();
-      const thumbnail = file.replace(/\.json$/i,'.png');
-      return { name, file, folder, thumbnail, url: resolveTemplateURL(file) };
-    });
-  }
-
-  function normalizeToBoardData(raw){
-  let data = raw;
-  if (Array.isArray(data)) data = { shots: data };
-  const carriers = ['tpl','template','board','data','payload'];
-  if (!(data && Array.isArray(data.shots)) && data && typeof data==='object'){
-    for (const k of carriers){
-      const v = data[k];
-      if (v && typeof v==='object' && Array.isArray(v.shots)) { data = v; break; }
-    }
-    if (!(data && Array.isArray(data.shots))){
-      for (const v of Object.values(raw)){
-        if (v && typeof v==='object' && Array.isArray(v.shots)) { data = v; break; }
-      }
-    }
-  }
-  if (!(data && Array.isArray(data.shots))) throw new Error('Template JSON has no shots[]');
-  if (!(data.meta && data.meta.app === 'shotlist-maker')){
-    data = { meta:{ app:'shotlist-maker', source:'template' }, shots: data.shots };
-  }
-  return data;
-}
-
-  async function listTemplates(){
-    try{ return await scanGithub('main'); }catch(_){}
-    try{ return await scanGithub('master'); }catch(_){}
-    for(const u of MANIFEST_URLS){
-      try{
-        const arr = await fetchJSON(u);
-        if (Array.isArray(arr) && arr.length){
-          return arr.filter(t => (t.file||'').endsWith('.json')).map(t=>{const file = t.file;const folder = (t.folder||t.dir||file.split('/').slice(1,-1).join('/')).replace(/^templates\/?/,'');const name = t.name || file.split('/').pop().replace(/\.json$/,'');const thumbnail = t.thumbnail || file.replace(/\.json$/i,'.png');return { ...t, name, file, folder, thumbnail, url: resolveTemplateURL(file) };});
+          return arr.filter(t => (t.file||'').endsWith('.json')).map(t=>{
+            const file = t.file;
+            const folder = (t.folder||t.dir||file.split('/').slice(1,-1).join('/')).replace(/^templates\/?/,'');
+            const name = t.name || file.split('/').pop().replace(/\.json$/,'');
+            const thumbnail = t.thumbnail || file.replace(/\.json$/i,'.png');
+            return { ...t, name, file, folder, thumbnail };
+          });
         }
       }catch(_){}
     }
@@ -1681,7 +1481,6 @@ importJSONInput.addEventListener('change', async (e)=>{
     draw(root); treeEl.appendChild(ul);
   }
   function matchQuery(t,q){ if(!q) return true; const hay = `${t.name||''} ${(t.tags||[]).join(' ')} ${t.file||''}`; return hay.toLowerCase().includes(q.toLowerCase()); }
-
   function renderGrid(){
     grid.innerHTML=''; const q=(searchEl && searchEl.value || '').trim();
     let list = allTemplates.filter(t=>matchQuery(t,q));
@@ -1696,148 +1495,22 @@ importJSONInput.addEventListener('change', async (e)=>{
       const meta=document.createElement('div'); meta.className='tpl-meta'; meta.textContent = t.folder ? `templates/${t.folder}` : 'templates';
       const actions=document.createElement('div'); actions.className='tpl-actions';
       const loadBtn=document.createElement('button'); loadBtn.className='tpl-btn'; loadBtn.textContent='Load';
-      
-      loadBtn.onclick = async ()=>{
-  try{
-    const url = t.url || resolveTemplateURL(t.file);
-    const raw = await fetchJSON(url);
-    const board = normalizeToBoardData(raw);
-    if (typeof loadBoardData === 'function') loadBoardData(board);
-    rememberRecent(t.file);
-    overlay.classList.remove('show');
-  }catch(e){
-    console.error('Template load failed:', e);
-    alert('Failed to load '+(t.file||'template')+': '+(e&&e.message?e.message:e));
-  }
-};
-
-linkBtn.onclick = async ()=>{
-  const u = new URL(location.href);
-  u.searchParams.set('src', t.url || resolveTemplateURL(t.file));
-  try { await navigator.clipboard.writeText(u.toString()); alert('Link copied!'); }
-  catch(e){ prompt('Copy link:', u.toString()); }
-};
-      
+      loadBtn.onclick = async ()=>{ try{ const data = await fetchJSON(t.file); if (typeof loadBoardData === 'function') loadBoardData(data); rememberRecent(t.file); overlay.classList.remove('show'); }catch(e){ alert('Failed to load '+t.file+': '+e.message); } };
+      const linkBtn=document.createElement('button'); linkBtn.className='tpl-btn'; linkBtn.textContent='Share link';
+      linkBtn.onclick = async ()=>{ const u = new URL(location.href); u.searchParams.set('src', t.file); try{ await navigator.clipboard.writeText(u.toString()); alert('Link copied!'); } catch(e){ prompt('Copy link:', u.toString()); } };
       actions.appendChild(loadBtn); actions.appendChild(linkBtn);
       card.appendChild(thumb); card.appendChild(name); card.appendChild(meta); card.appendChild(actions); grid.appendChild(card);
     }
   }
-
   searchEl?.addEventListener('input', ()=> renderGrid());
   (async function initTemplates(){
     try{ allTemplates = await listTemplates(); }catch(e){ console.warn('Template discovery failed:', e); allTemplates = []; }
     renderTree(); renderGrid();
-    try{ const sp = new URLSearchParams(location.search); const src = sp.get('src'); if (src){ const url = resolveTemplateURL(src); const raw = await fetchJSON(url); const board = normalizeToBoardData(raw); if (typeof loadBoardData === 'function') loadBoardData(board); } }catch(e){ console.warn('Auto-load via ?src failed:', e); }
+    try{ const sp = new URLSearchParams(location.search); const src = sp.get('src'); if (src){ const data = await fetchJSON(src); if (typeof loadBoardData === 'function') loadBoardData(data); } }catch(e){ console.warn('Auto-load via ?src failed:', e); }
   })();
 })();
-
-async function gatherFilesFromDirHandle(dirHandle){
-  const files = [];
-  async function walk(handle){
-    try{
-      for await (const [name, h] of handle.entries()){
-        if (h.kind === 'file'){
-          try{
-            const f = await h.getFile();
-            if ((f.type||'').startsWith('video/')) files.push(f);
-          }catch{}
-        }else if (h.kind === 'directory'){
-          await walk(h);
-        }
-      }
-    }catch(e){ /* not supported or denied */ }
-  }
-  await walk(dirHandle);
-  return files;
-}
-
-function buildSigKey(sig){
-  if(!sig) return '';
-  const name = (sig.name||'').toLowerCase();
-  const size = sig.size||0;
-  const lm   = sig.lastModified||0;
-  const type = (sig.type||'').toLowerCase();
-  return [name, size, lm, type].join('|');
-}
-
-async function relinkFromFileList(files, onlyMissing){
-  const byStrong = new Map();
-  const byName   = new Map();
-  for (const f of files){
-    const key = buildSigKey({name:f.name,size:f.size,lastModified:f.lastModified,type:f.type});
-    byStrong.set(key, f);
-    byName.set((f.name||'').toLowerCase(), f);
-  }
-  let relinked = 0;
-  for (const s of shots){
-    if (s.mediaType !== 'video') continue;
-    if (onlyMissing && s.previewURL) continue;
-    const sig = s.sourceHint || {name:s.filename||''};
-    const strong = buildSigKey(sig);
-    let file = byStrong.get(strong);
-    if (!file){
-      file = byName.get((sig.name||s.filename||'').toLowerCase());
-    }
-    if (file){
-      try{
-        const url = URL.createObjectURL(file);
-        s.previewURL = url;
-        s.filename = file.name || s.filename;
-        s.format = inferFormat(file);
-        if (!s.thumb){
-          try{ s.thumb = await videoPoster(file) || ''; }catch{}
-        }
-        s.sourceHint = { name:file.name||'', size:(file.size||0), lastModified:(file.lastModified||0), type:file.type||'' };
-        relinked++;
-      }catch(e){ console.warn('Failed to relink', e); }
-    }
-  }
-  if (relinked){
-    render();
-    alert('Relinked ' + relinked + ' video(s).');
-  }else{
-    alert('No matching videos found in the selected folder.');
-  }
-}
-
-function countMissingVideos(){
-  return shots.filter(s => s.mediaType==='video' && !s.previewURL).length;
-}
-
-async function maybeAutoRelinkVideos(){
-  const missing = countMissingVideos();
-  if (!missing) return;
-  const go = confirm('This board has ' + missing + ' video(s) that need re-linking. Pick a folder to scan now?');
-  if (go){ await chooseFolderAndRelink({onlyMissing:true}); }
-}
-
-async function chooseFolderAndRelink(options){
-  options = options || {};
-  const onlyMissing = options.onlyMissing !== false; // default true
-  let files = [];
-
-  if (window.showDirectoryPicker){
-    try{
-      const dirHandle = await window.showDirectoryPicker({mode:'read'});
-      files = await gatherFilesFromDirHandle(dirHandle);
-    }catch(e){ /* user cancelled */ }
-  }
-  if (!files.length){
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.multiple = true;
-    input.accept = 'video/*';
-    input.webkitdirectory = true;
-    input.directory = true;
-    const picked = await new Promise(res => { input.onchange = ()=> res([...input.files]); input.click(); });
-    files = picked || [];
-  }
-  if (!files.length) return;
-  await relinkFromFileList(files, onlyMissing);
-}
-
-
 </script>
+<!-- === /Templates Modal === -->
 
 <script>
 // print
@@ -1936,114 +1609,7 @@ document.body.appendChild(a);
 a.click();
 setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 0);
 });
-
-async function gatherFilesFromDirHandle(dirHandle){
-  const files = [];
-  async function walk(handle){
-    try{
-      for await (const [name, h] of handle.entries()){
-        if (h.kind === 'file'){
-          try{
-            const f = await h.getFile();
-            if ((f.type||'').startsWith('video/')) files.push(f);
-          }catch{}
-        }else if (h.kind === 'directory'){
-          await walk(h);
-        }
-      }
-    }catch(e){ /* not supported or denied */ }
-  }
-  await walk(dirHandle);
-  return files;
-}
-
-function buildSigKey(sig){
-  if(!sig) return '';
-  const name = (sig.name||'').toLowerCase();
-  const size = sig.size||0;
-  const lm   = sig.lastModified||0;
-  const type = (sig.type||'').toLowerCase();
-  return [name, size, lm, type].join('|');
-}
-
-async function relinkFromFileList(files, onlyMissing){
-  const byStrong = new Map();
-  const byName   = new Map();
-  for (const f of files){
-    const key = buildSigKey({name:f.name,size:f.size,lastModified:f.lastModified,type:f.type});
-    byStrong.set(key, f);
-    byName.set((f.name||'').toLowerCase(), f);
-  }
-  let relinked = 0;
-  for (const s of shots){
-    if (s.mediaType !== 'video') continue;
-    if (onlyMissing && s.previewURL) continue;
-    const sig = s.sourceHint || {name:s.filename||''};
-    const strong = buildSigKey(sig);
-    let file = byStrong.get(strong);
-    if (!file){
-      file = byName.get((sig.name||s.filename||'').toLowerCase());
-    }
-    if (file){
-      try{
-        const url = URL.createObjectURL(file);
-        s.previewURL = url;
-        s.filename = file.name || s.filename;
-        s.format = inferFormat(file);
-        if (!s.thumb){
-          try{ s.thumb = await videoPoster(file) || ''; }catch{}
-        }
-        s.sourceHint = { name:file.name||'', size:(file.size||0), lastModified:(file.lastModified||0), type:file.type||'' };
-        relinked++;
-      }catch(e){ console.warn('Failed to relink', e); }
-    }
-  }
-  if (relinked){
-    render();
-    alert('Relinked ' + relinked + ' video(s).');
-  }else{
-    alert('No matching videos found in the selected folder.');
-  }
-}
-
-function countMissingVideos(){
-  return shots.filter(s => s.mediaType==='video' && !s.previewURL).length;
-}
-
-async function maybeAutoRelinkVideos(){
-  const missing = countMissingVideos();
-  if (!missing) return;
-  const go = confirm('This board has ' + missing + ' video(s) that need re-linking. Pick a folder to scan now?');
-  if (go){ await chooseFolderAndRelink({onlyMissing:true}); }
-}
-
-async function chooseFolderAndRelink(options){
-  options = options || {};
-  const onlyMissing = options.onlyMissing !== false; // default true
-  let files = [];
-
-  if (window.showDirectoryPicker){
-    try{
-      const dirHandle = await window.showDirectoryPicker({mode:'read'});
-      files = await gatherFilesFromDirHandle(dirHandle);
-    }catch(e){ /* user cancelled */ }
-  }
-  if (!files.length){
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.multiple = true;
-    input.accept = 'video/*';
-    input.webkitdirectory = true;
-    input.directory = true;
-    const picked = await new Promise(res => { input.onchange = ()=> res([...input.files]); input.click(); });
-    files = picked || [];
-  }
-  if (!files.length) return;
-  await relinkFromFileList(files, onlyMissing);
-}
-
-
 </script>
 
 </body>
-</html>
+</html>`;
