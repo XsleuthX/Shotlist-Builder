@@ -1,7 +1,7 @@
 [
   {
-    "name": "shotlist1",
-    "file": "templates/shotlist1.json",
+    "name": "shotlist",
+    "file": "templates/shotlist.json",
     "thumbnail": "thumbs/shotlist.png",
     "tags": ["shots", "scenes"]
   },
