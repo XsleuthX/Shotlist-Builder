@@ -1,35 +1,8 @@
 [
   {
-    "name": "board",
-    "file": "templates/board.json",
-    "thumbnail": "thumbs/board.png",
-    "tags": [
-      "shots",
-      "scenes"
-    ]
-  },
-  {
-    "name": "shotlist1",
-    "file": "templates/shotlist1.json",
+    "name": "shotlist-template-apply",
+    "file": "templates/shotlist-template-apply.json",
     "thumbnail": "thumbs/shotlist1.png",
-    "tags": [
-      "shots",
-      "scenes"
-    ]
-  },
-  {
-    "name": "shotlist2",
-    "file": "templates/shotlist2.json",
-    "thumbnail": "thumbs/shotlist2.png",
-    "tags": [
-      "shots",
-      "scenes"
-    ]
-  },
-  {
-    "name": "shotlist3",
-    "file": "templates/shotlist3.json",
-    "thumbnail": "thumbs/shotlist3.png",
     "tags": [
       "shots",
       "scenes"
