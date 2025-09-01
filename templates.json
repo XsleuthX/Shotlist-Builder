@@ -1,19 +1,29 @@
 [
   {
-    "name": "shotlist",
-    "file": "templates/shotlist.json",
+    "name": "shotlist1",
+    "file": "templates/shotlist1.json",
     "thumbnail": "thumbs/shotlist.png",
-    "tags": ["shots", "scenes"]
+    "tags": [
+      "shots",
+      "scenes"
+    ]
   },
   {
-    "name": "Webtools",
-    "file": "templates/Advanced/webtools.json",
-    "tags": ["tools", "webapp"]
+    "name": "shotlist2",
+    "file": "templates/shotlist2.json",
+    "thumbnail": "thumbs/shotlist2.png",
+    "tags": [
+      "shots",
+      "scenes"
+    ]
   },
   {
-    "name": "Bintan Trip 3",
-    "file": "templates/Project/Bintan Trip 3.json",
-    "thumbnail": "thumbs/story.png",
-    "tags": ["story", "frames"]
+    "name": "shotlist3",
+    "file": "templates/shotlist3.json",
+    "thumbnail": "thumbs/shotlist3.png",
+    "tags": [
+      "shots",
+      "scenes"
+    ]
   }
 ]
