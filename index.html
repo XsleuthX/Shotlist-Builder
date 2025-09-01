@@ -1739,8 +1739,50 @@ async function chooseFolderAndRelink(options){
   overlay?.addEventListener('click', (e)=>{ if(e.target===overlay) closeModal(); });
   document.getElementById('btnTemplates')?.addEventListener('click', openModal);
 
-  const MANIFEST_URLS = ['templates.json','templates/templates.json','boards.json'];
-  function resolveTemplateURL(file){if(/^https?:\/\//i.test(file)) return file;const repo = detectGhRepo();if(repo) return file;const GH_REPO = window.TPL_GH_REPO||null; const GH_BRANCH = window.TPL_GH_BRANCH||'main';if(GH_REPO){ const clean=String(file).replace(/^\.?\//,'');return `https://raw.githubusercontent.com/${GH_REPO}/${GH_BRANCH}/${clean}`;}return file;}async function fetchJSON(url){ const res = await fetch(url, {cache:'no-store'}); if(!res.ok) throw new Error('HTTP '+res.status+' for '+url); return res.json(); }
+  
+
+  function loadTemplateData(raw){
+    let data = raw;
+    try{
+      if (Array.isArray(data)) {
+        data = { meta:{ app:'shotlist-maker', source:'template' }, shots: data };
+      }
+      const looksLikeFragment = !(data && data.meta && data.meta.app==='shotlist-maker') && Array.isArray(data && data.shots);
+      const boardEmpty = !Array.isArray(window.shots) || window.shots.length===0;
+      if (looksLikeFragment && boardEmpty) {
+        data = { meta:{ app:'shotlist-maker', source:'template' }, shots: data.shots };
+      }
+      if (data && data.meta && data.meta.app==='shotlist-maker' && Array.isArray(data.shots)) {
+        if (typeof window.loadBoardData === 'function') window.loadBoardData(data);
+        else if (typeof window.applyShotTemplate === 'function') window.applyShotTemplate({ mode:'replace', shots: data.shots });
+      } else {
+        const hasShots = Array.isArray(window.shots) && window.shots.length>0;
+        if (!hasShots && Array.isArray(data && data.shots)) {
+          alert('Template loaded, but there are no shots on the board to apply to. Add/import shots first, or set mode:"replace" in the template.');
+        }
+        if (typeof window.applyShotTemplate === 'function') window.applyShotTemplate(data || {});
+      }
+    }catch(err){
+      console.warn('loadTemplateData failed:', err);
+      alert('Failed to load template: ' + (err && err.message ? err.message : err));
+    }
+  }
+
+const MANIFEST_URLS = ['templates.json','templates/templates.json','boards.json'];
+  
+function resolveTemplateURL(file){
+  if(/^https?:\/\//i.test(file)) return file;
+  const repo = detectGhRepo();
+  if(repo) return file;
+  const GH_REPO = window.TPL_GH_REPO || null;
+  const GH_BRANCH = window.TPL_GH_BRANCH || 'main';
+  if (GH_REPO){
+    const clean = String(file).replace(/^\.\?\//,'');
+    return `https://raw.githubusercontent.com/${GH_REPO}/${GH_BRANCH}/${clean}`;
+  }
+  return file;
+}
+async function fetchJSON(url){ const res = await fetch(url, {cache:'no-store'}); if(!res.ok) throw new Error('HTTP '+res.status+' for '+url); return res.json(); }
   function detectGhRepo(){ try{ if(!location.hostname.endsWith('github.io')) return null;
     const owner = location.hostname.split('.')[0]; const repo = location.pathname.replace(/^\/+/, '').split('/')[0] || null; return (owner && repo) ? {owner, repo} : null; }catch(_){ return null; } }
   async function scanGithub(branch){
@@ -1763,7 +1805,7 @@ async function chooseFolderAndRelink(options){
       try{
         const arr = await fetchJSON(u);
         if (Array.isArray(arr) && arr.length){
-          return arr.filter(t => (t.file||'').endsWith('.json')).map(t=>{const file = t.file;const folder = (t.folder||t.dir||file.split('/').slice(1,-1).join('/')).replace(/^templates\/?/,'');const name = t.name || file.split('/').pop().replace(/\.json$/,'');const thumbnail = t.thumbnail || file.replace(/\.json$/i,'.png');return { ...t, name, file, folder, thumbnail, url: resolveTemplateURL(file) };});
+          return arr.filter(t => (t.file||'').endsWith('.json')).map(t=>{      const file = t.file;      const folder = (t.folder||t.dir||file.split('/').slice(1,-1).join('/')).replace(/^templates\/?/,'');      const name = t.name || file.split('/').pop().replace(/\.json$/,'');      const thumbnail = t.thumbnail || file.replace(/\.json$/i,'.png');      return { ...t, name, file, folder, thumbnail, url: resolveTemplateURL(file) };    });
         }
       }catch(_){}
     }
@@ -1815,7 +1857,7 @@ async function chooseFolderAndRelink(options){
       const meta=document.createElement('div'); meta.className='tpl-meta'; meta.textContent = t.folder ? `templates/${t.folder}` : 'templates';
       const actions=document.createElement('div'); actions.className='tpl-actions';
       const loadBtn=document.createElement('button'); loadBtn.className='tpl-btn'; loadBtn.textContent='Load';
-      loadBtn.onclick = async ()=>{ try{ const data = await fetchJSON(t.url || t.file); if (typeof loadBoardData === 'function') loadBoardData(data); rememberRecent(t.file); overlay.classList.remove('show'); }catch(e){ alert('Failed to load '+t.file+': '+e.message); } };
+      loadBtn.onclick = async ()=>{ try{ const data = await fetchJSON(t.file); if (typeof loadBoardData === 'function') loadBoardData(data); rememberRecent(t.file); overlay.classList.remove('show'); }catch(e){ alert('Failed to load '+t.file+': '+e.message); } };
       const linkBtn=document.createElement('button'); linkBtn.className='tpl-btn'; linkBtn.textContent='Share link';
       linkBtn.onclick = async ()=>{ const u = new URL(location.href); u.searchParams.set('src', t.file); try{ await navigator.clipboard.writeText(u.toString()); alert('Link copied!'); } catch(e){ prompt('Copy link:', u.toString()); } };
       actions.appendChild(loadBtn); actions.appendChild(linkBtn);
