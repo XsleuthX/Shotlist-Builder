@@ -1459,113 +1459,52 @@ importJSONInput.addEventListener('change', async (e)=>{
   importJSONInput.value='';
 });
 
-<!-- Templates adapter for Shot List Maker -->
+<!-- Board loader (board-only schema) -->
 (function(){
-  function applyShotTemplate(tpl){
+  function isBoardData(data){
+    return data && data.meta && data.meta.app === 'shotlist-maker' && Array.isArray(data.shots);
+  }
+
+  window.loadBoardData = function(data){
+    if (!isBoardData(data)) {
+      alert('Not a valid Shot List board JSON. Expecting {meta:{app:"shotlist-maker"}, shots:[...]}.');
+      return;
+    }
     try{
-      const defaults = tpl && (tpl.defaults || tpl.default) || {};
-      const selected = (Array.isArray(window.shots) ? window.shots.filter(s=>s.selected) : []);
-      const target = selected.length ? selected : (window.shots || []);
-      if (defaults && typeof defaults === 'object'){
-        target.forEach(s=>{
-          if(defaults.titlePrefix && !s.title) s.title = defaults.titlePrefix;
-          if(defaults.camera != null) s.camera = defaults.camera;
-          if(defaults.lens   != null) s.lens   = defaults.lens;
-          if(defaults.take   != null) s.take   = defaults.take;
-          if(defaults.notes  != null) s.notes  = defaults.notes;
-          if(defaults.starred!= null) s.starred= !!defaults.starred;
-        });
-      }
-      if (Array.isArray(tpl && tpl.shots) && tpl.shots.length){
-        const mode = tpl.mode || 'apply';
-        if (mode === 'replace'){
-          window.shots = tpl.shots.map((r,i)=> {
-            const base = {
-          sourceHint: s.sourceHint || { name: s.filename || '', size: s.size || 0, lastModified: s.lastModified || 0, type: s.type || '' }, 
-            id: crypto.randomUUID(),
-            filename: r.filename || '',
-            format: r.format || (typeof guessFormatFromFilename==='function' && r.filename ? guessFormatFromFilename(r.filename) : ''),
-            mediaType: r.mediaType || 'image',
-            thumb: r.thumb || '',
-            imageURL: r.imageURL || '',
-            previewURL: r.previewURL || '',
-            isAnimated: !!r.isAnimated,
-            webpFrame: Number.isInteger(r.webpFrame) ? r.webpFrame : 0,
-            webpTotalFrames: Number.isInteger(r.webpTotalFrames) ? r.webpTotalFrames : 0,
-            title: r.title || '',
-            startTC: r.startTC || '',
-            endTC: r.endTC || '',
-            desc: r.desc || '',
-            camera: (r.camera != null ? r.camera : (defaults.camera || '')),
-            lens:   (r.lens   != null ? r.lens   : (defaults.lens   || '')),
-            take:   (r.take   != null ? r.take   : (defaults.take   || '')),
-            notes:  (r.notes  != null ? r.notes  : (defaults.notes  || '')),
-            selected:false,
-            starred: (r.starred != null ? !!r.starred : !!defaults.starred),
-            collapsed:true
-           };
-            if (base.mediaType==='image' && r.imageData && !base.imageURL){
-              const b = dataURLtoBlob(r.imageData);
-              if (b){ try{ base.imageURL = URL.createObjectURL(b); base.isAnimated = true; if(!base.format) base.format='WEBP'; }catch{} }
-            }
-            return base;
-          });
-        } else {
-          for (let i=0;i<tpl.shots.length;i++){
-            const r = tpl.shots[i], s = target[i]; if(!s) break;
-            if(r.title   != null) s.title   = r.title;
-            if(r.startTC != null) s.startTC = r.startTC;
-            if(r.endTC   != null) s.endTC   = r.endTC;
-            if(r.desc    != null) s.desc    = r.desc;
-            if(r.camera  != null) s.camera  = r.camera;
-            if(r.lens    != null) s.lens    = r.lens;
-            if(r.take    != null) s.take    = r.take;
-            if(r.notes   != null) s.notes   = r.notes;
-            if(r.starred != null) s.starred = !!r.starred;
-          }
+      window.shots = data.shots.map((s)=>{
+        const base = {
+          sourceHint: s.sourceHint || { name: s.filename || '', size: s.size || 0, lastModified: s.lastModified || 0, type: s.type || '' },
+          selected:false, starred:!!s.starred, collapsed:true,
+          startTC: s.startTC || s.timecode || '',
+          format: s.format || (typeof guessFormatFromFilename==='function' && s.filename ? guessFormatFromFilename(s.filename) : s.format),
+          mediaType: s.mediaType || 'image',
+          imageURL: s.imageURL || '',
+          previewURL: s.previewURL || '',
+          isAnimated: !!s.isAnimated,
+          webpFrame: Number.isInteger(s.webpFrame) ? s.webpFrame : 0,
+          webpTotalFrames: Number.isInteger(s.webpTotalFrames) ? s.webpTotalFrames : 0,
+          ...s
+        };
+        if (base.mediaType==='image' && base.imageData && !base.imageURL){
+          const b = dataURLtoBlob(base.imageData);
+          if (b){ try{ base.imageURL = URL.createObjectURL(b); base.isAnimated = true; if(!base.format) base.format='WEBP'; }catch{} }
         }
-      }
+        base.id = base.id || (typeof crypto!=='undefined' && crypto.randomUUID ? crypto.randomUUID() : ('id_'+Math.random().toString(36).slice(2)));
+        return base;
+      });
       if (typeof window.resetInfinite === 'function') window.resetInfinite();
       if (typeof window.render === 'function') window.render();
-    }catch(err){
-      console.warn('applyShotTemplate failed:', err);
-      alert('Failed to apply template: ' + (err && err.message ? err.message : err));
-    }
-  }
-  window.loadBoardData = function(data){
-    try{
-      if (data && data.meta && data.meta.app === 'shotlist-maker' && Array.isArray(data.shots)){
-        window.shots = data.shots.map(s => {
-          const base = {
-          sourceHint: s.sourceHint || { name: s.filename || '', size: s.size || 0, lastModified: s.lastModified || 0, type: s.type || '' },
-            selected:false, starred:!!s.starred, collapsed:true,
-            startTC: s.startTC || s.timecode || '',
-            format: s.format || (typeof guessFormatFromFilename==='function' && s.filename ? guessFormatFromFilename(s.filename) : s.format),
-            mediaType: s.mediaType || 'image',
-            imageURL: s.imageURL || '',
-            previewURL: s.previewURL || '',
-            isAnimated: !!s.isAnimated,
-            webpFrame: Number.isInteger(s.webpFrame) ? s.webpFrame : 0,
-            webpTotalFrames: Number.isInteger(s.webpTotalFrames) ? s.webpTotalFrames : 0,
-            ...s
-          };
-          if (base.mediaType==='image' && base.imageData && !base.imageURL){
-            const b = dataURLtoBlob(base.imageData);
-            if (b){ try{ base.imageURL = URL.createObjectURL(b); base.isAnimated = true; if(!base.format) base.format='WEBP'; }catch{} }
-          }
-          return base;
-        });
-if (typeof window.resetInfinite === 'function') window.resetInfinite();
-        if (typeof window.render === 'function') window.render();
-      } else {
-        applyShotTemplate(data || {});
-      }
+      setTimeout(()=> { try{ maybeAutoRelinkVideos(); }catch{} }, 0);
     }catch(e){
       console.warn('loadBoardData failed:', e);
-      alert('Failed to load template: ' + (e && e.message ? e.message : e));
+      alert('Failed to load board: ' + (e && e.message ? e.message : e));
     }
   };
+
+  // Expose checker so the modal can validate before loading
+  window.isBoardData = isBoardData;
 })();
+
 
 async function gatherFilesFromDirHandle(dirHandle){
   const files = [];
@@ -1820,7 +1759,21 @@ async function chooseFolderAndRelink(options){
       const meta=document.createElement('div'); meta.className='tpl-meta'; meta.textContent = t.folder ? `templates/${t.folder}` : 'templates';
       const actions=document.createElement('div'); actions.className='tpl-actions';
       const loadBtn=document.createElement('button'); loadBtn.className='tpl-btn'; loadBtn.textContent='Load';
-      loadBtn.onclick = async ()=>{ try{ const data = await fetchJSON(t.file); if (typeof loadBoardData === 'function') loadBoardData(data); rememberRecent(t.file); overlay.classList.remove('show'); }catch(e){ alert('Failed to load '+t.file+': '+e.message); } };
+      loadBtn.onclick = async ()=> {
+  try{
+    const data = await fetchJSON(t.url || t.file);
+    if (!window.isBoardData || !isBoardData(data)) {
+      alert('This file is not a Shot List board (missing meta.app/shots).');
+      return;
+    }
+    loadBoardData(data);
+    rememberRecent(t.file);
+    overlay.classList.remove('show');
+  }catch(e){
+    alert('Failed to load '+t.file+': '+e.message);
+  }
+};
+
       const linkBtn=document.createElement('button'); linkBtn.className='tpl-btn'; linkBtn.textContent='Share link';
       linkBtn.onclick = async ()=>{ const u = new URL(location.href); u.searchParams.set('src', t.file); try{ await navigator.clipboard.writeText(u.toString()); alert('Link copied!'); } catch(e){ prompt('Copy link:', u.toString()); } };
       actions.appendChild(loadBtn); actions.appendChild(linkBtn);
