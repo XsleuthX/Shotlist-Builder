@@ -1,5 +1,14 @@
 [
   {
+    "name": "board",
+    "file": "board.json",
+    "thumbnail": "thumbs/board.png",
+    "tags": [
+      "shots",
+      "scenes"
+    ]
+  },
+  {
     "name": "shotlist1",
     "file": "templates/shotlist1.json",
     "thumbnail": "thumbs/shotlist1.png",
