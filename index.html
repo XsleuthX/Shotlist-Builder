@@ -47,7 +47,6 @@ h1{margin:0 0 6px; font-size:18px; letter-spacing:.2px}
 
 /* Bridge variables for Templates modal */
 :root{ --panel: var(--bg-2); --text: var(--ink); --muted: var(--ink-dim); --accent: var(--accent); }
-
 /* Toolbar */
 .bar{display:flex; flex-wrap:wrap; gap:10px; align-items:center}
 .group{
@@ -426,7 +425,6 @@ rebindCanvas(newCanvas){
         <button id="exportJSON" class="btn"> Export JSON</button>
         <label class="filebtn btn"><input id="importJSON" type="file" accept="application/json"> Import JSON</label>
         <button id="exportCSV" class="btn"> Export CSV</button>
-      
         <button id="btnTemplates" class="btn"> Templates</button>
       </div>
     </div>
@@ -1187,169 +1185,109 @@ card.addEventListener('dragover',(e)=>{ e.preventDefault(); card.classList.add('
     const f=e.target.files[0]; if(!f) return;
     try{
       const data=JSON.parse(await f.text());
-      await applyTemplateData(data); 
-    }catch(err){
-    alert('Failed to import JSON: ' + err.message);
-  }
-  importJSONInput.value='';
-});
+      if(Array.isArray(data.shots)){
+        shots=data.shots.map(s=>({selected:false, starred:false, mediaType:'image', collapsed:true, ...s,
+          startTC:s.startTC||(s.timecode||''), format:s.format||guessFormatFromFilename(s.filename)}));
+        resetInfinite(); render();
+      }else alert('JSON missing "shots" array.');
+    }catch{ alert('Failed to import JSON.'); }
+    importJSONInput.value='';
+  });
 
-<!-- Templates adapter for Shot List Builder -->
-function applyShotTemplate(tpl){
-  try{
-    const defaults = tpl && (tpl.defaults || tpl.default) || {};
-    const selected = (Array.isArray(window.shots) ? window.shots.filter(s=>s.selected) : []);
-    const target = selected.length ? selected : (window.shots || []);
-    if (defaults && typeof defaults === 'object'){
-      target.forEach(s=>{
-        if(defaults.titlePrefix && !s.title) s.title = defaults.titlePrefix;
-        if(defaults.camera != null) s.camera = defaults.camera;
-        if(defaults.lens   != null) s.lens   = defaults.lens;
-        if(defaults.take   != null) s.take   = defaults.take;
-        if(defaults.notes  != null) s.notes  = defaults.notes;
-        if(defaults.starred!= null) s.starred= !!defaults.starred;
-      });
-    }
-    if (Array.isArray(tpl && tpl.shots) && tpl.shots.length){
-      const mode = tpl.mode || 'apply';
-      if (mode === 'replace'){
-        window.shots = tpl.shots.map((r,i)=> ({
-          id: crypto.randomUUID(),
-          filename: r.filename || '',
-          format: r.format || (typeof guessFormatFromFilename==='function' && r.filename ? guessFormatFromFilename(r.filename) : ''),
-          mediaType: r.mediaType || 'image',
-          thumb: r.thumb || '',
-          imageURL: '',
-          previewURL: '',
-          isAnimated: !!r.isAnimated,
-          webpFrame: Number.isInteger(r.webpFrame) ? r.webpFrame : 0,
-          webpTotalFrames: Number.isInteger(r.webpTotalFrames) ? r.webpTotalFrames : 0,
-          title: r.title || '',
-          startTC: r.startTC || '',
-          endTC: r.endTC || '',
-          desc: r.desc || '',
-          camera: (r.camera != null ? r.camera : (defaults.camera || '')),
-          lens:   (r.lens   != null ? r.lens   : (defaults.lens   || '')),
-          take:   (r.take   != null ? r.take   : (defaults.take   || '')),
-          notes:  (r.notes  != null ? r.notes  : (defaults.notes  || '')),
-          selected:false,
-          starred: (r.starred != null ? !!r.starred : !!defaults.starred),
-          collapsed:true
-        }));
-      } else {
-        for (let i=0;i<tpl.shots.length;i++){
-          const r = tpl.shots[i], s = target[i]; if(!s) break;
-          if(r.title   != null) s.title   = r.title;
-          if(r.startTC != null) s.startTC = r.startTC;
-          if(r.endTC   != null) s.endTC   = r.endTC;
-          if(r.desc    != null) s.desc    = r.desc;
-          if(r.camera  != null) s.camera  = r.camera;
-          if(r.lens    != null) s.lens    = r.lens;
-          if(r.take    != null) s.take    = r.take;
-          if(r.notes   != null) s.notes   = r.notes;
-          if(r.starred != null) s.starred = !!r.starred;
+
+<!-- Templates adapter for Shot List Maker -->
+
+(function(){
+  function applyShotTemplate(tpl){
+    try{
+      const defaults = tpl && (tpl.defaults || tpl.default) || {};
+      const selected = (Array.isArray(window.shots) ? window.shots.filter(s=>s.selected) : []);
+      const target = selected.length ? selected : (window.shots || []);
+      if (defaults && typeof defaults === 'object'){
+        target.forEach(s=>{
+          if(defaults.titlePrefix && !s.title) s.title = defaults.titlePrefix;
+          if(defaults.camera != null) s.camera = defaults.camera;
+          if(defaults.lens   != null) s.lens   = defaults.lens;
+          if(defaults.take   != null) s.take   = defaults.take;
+          if(defaults.notes  != null) s.notes  = defaults.notes;
+          if(defaults.starred!= null) s.starred= !!defaults.starred;
+        });
+      }
+      if (Array.isArray(tpl && tpl.shots) && tpl.shots.length){
+        const mode = tpl.mode || 'apply';
+        if (mode === 'replace'){
+          window.shots = tpl.shots.map((r,i)=> ({
+            id: crypto.randomUUID(),
+            filename: r.filename || '',
+            format: r.format || (typeof guessFormatFromFilename==='function' && r.filename ? guessFormatFromFilename(r.filename) : ''),
+            mediaType: r.mediaType || 'image',
+            thumb: r.thumb || '',
+            imageURL: r.imageURL || '',
+            previewURL: r.previewURL || '',
+            isAnimated: !!r.isAnimated,
+            webpFrame: Number.isInteger(r.webpFrame) ? r.webpFrame : 0,
+            webpTotalFrames: Number.isInteger(r.webpTotalFrames) ? r.webpTotalFrames : 0,
+            title: r.title || '',
+            startTC: r.startTC || '',
+            endTC: r.endTC || '',
+            desc: r.desc || '',
+            camera: (r.camera != null ? r.camera : (defaults.camera || '')),
+            lens:   (r.lens   != null ? r.lens   : (defaults.lens   || '')),
+            take:   (r.take   != null ? r.take   : (defaults.take   || '')),
+            notes:  (r.notes  != null ? r.notes  : (defaults.notes  || '')),
+            selected:false,
+            starred: (r.starred != null ? !!r.starred : !!defaults.starred),
+            collapsed:true
+          }));
+        } else {
+          for (let i=0;i<tpl.shots.length;i++){
+            const r = tpl.shots[i], s = target[i]; if(!s) break;
+            if(r.title   != null) s.title   = r.title;
+            if(r.startTC != null) s.startTC = r.startTC;
+            if(r.endTC   != null) s.endTC   = r.endTC;
+            if(r.desc    != null) s.desc    = r.desc;
+            if(r.camera  != null) s.camera  = r.camera;
+            if(r.lens    != null) s.lens    = r.lens;
+            if(r.take    != null) s.take    = r.take;
+            if(r.notes   != null) s.notes   = r.notes;
+            if(r.starred != null) s.starred = !!r.starred;
+          }
         }
       }
+      if (typeof window.resetInfinite === 'function') window.resetInfinite();
+      if (typeof window.render === 'function') window.render();
+    }catch(err){
+      console.warn('applyShotTemplate failed:', err);
+      alert('Failed to apply template: ' + (err && err.message ? err.message : err));
     }
-    if (typeof window.render === 'function') window.render();
-  }catch(err){
-    console.warn('applyShotTemplate failed:', err);
-    alert('Failed to apply template: ' + (err && err.message ? err.message : err));
   }
-}
-function loadBoardData(data){ applyShotTemplate(data); }
-</script>
-
-<script>
-  // ---------- Template / Import adapter ----------
-  function guessFormatFromName(name=''){
-    const n = name.toLowerCase();
-    if (/\.(mp4|mov|m4v|mkv|avi|webm)$/.test(n)) return 'video';
-    if (/\.(png|jpe?g|webp|gif|tiff?)$/.test(n)) return n.split('.').pop().toUpperCase();
-    return '';
-  }
-  function inferMediaType(obj){
-    const t = (obj.mediaType||obj.type||obj.mime||'').toString().toLowerCase();
-    if (t.startsWith('video') || /(mp4|mov|m4v|mkv|avi|webm)$/i.test(obj.filename||'')) return 'video';
-    return 'image';
-  }
-  function pick(...candidates){
-    for (const v of candidates){ if (v!==undefined && v!==null && String(v).trim()!=='') return v; }
-    return '';
-  }
-  function normalizeShot(raw){
-    // map common aliases -> our schema
-    const filename = pick(raw.filename, raw.name, raw.file, raw.path);
-    const format   = pick(raw.format, raw.mime, raw.type, guessFormatFromName(filename));
-    const mediaType= pick(raw.mediaType, inferMediaType({mediaType:raw.mediaType,type:raw.type,mime:raw.mime,filename}));
-    const thumb    = pick(raw.thumb, raw.thumbnail, raw.poster, raw.image, raw.src, raw.url); // can be data URL or relative path
-    const imageURL = pick(raw.imageURL, raw.imgURL, raw.srcURL);
-    const previewURL = pick(raw.previewURL, raw.videoURL, raw.srcVideo);
-  
-    return {
-      id: raw.id || crypto.randomUUID(),
-      filename,
-      format,
-      mediaType,
-      thumb,
-      imageURL,
-      previewURL,
-      // animated webp fields (if present, keep them)
-      isAnimated: !!raw.isAnimated,
-      webpFrame: Number.isFinite(raw.webpFrame) ? raw.webpFrame : 0,
-      webpTotalFrames: Number.isFinite(raw.webpTotalFrames) ? raw.webpTotalFrames : 0,
-  
-      title:   pick(raw.title, raw.name),
-      startTC: pick(raw.startTC, raw.tcStart, raw.timecode, raw.timeIn, raw.timein),
-      endTC:   pick(raw.endTC, raw.tcEnd, raw.timeOut, raw.timeout),
-      desc:    pick(raw.desc, raw.description),
-      camera:  pick(raw.camera, raw.cam),
-      lens:    pick(raw.lens),
-      take:    pick(raw.take),
-      notes:   pick(raw.notes, raw.note),
-  
-      selected: false,
-      starred:  !!(raw.starred || raw.favorite || raw.star),
-      collapsed: true
-    };
-  }
-  
-  function normalizeShotlistPayload(payload){
-    // Accept {shots:[...]}, or just [...]
-    let arr = [];
-    if (Array.isArray(payload)) arr = payload;
-    else if (payload && Array.isArray(payload.shots)) arr = payload.shots;
-    else if (payload && Array.isArray(payload.items)) arr = payload.items;
-    else arr = []; // unknown shape
-  
-    const normalized = arr.map(normalizeShot);
-    return normalized;
-  }
-  
-  // Apply into app state and re-render
-  async function applyTemplateData(payload){
+  window.loadBoardData = function(data){
     try{
-      // Clean up any old object URLs
-      (window.shots||[]).forEach(s=>{
-        if (s.mediaType==='video' && s.previewURL) { try{ URL.revokeObjectURL(s.previewURL);}catch{} }
-        if (s.imageURL) { try{ URL.revokeObjectURL(s.imageURL);}catch{} }
-      });
-  
-      const list = normalizeShotlistPayload(payload);
-      if (!list.length){ alert('Template has no shots.'); return; }
-  
-      window.shots = list;
-      if (typeof resetInfinite === 'function') resetInfinite();
-      if (typeof render === 'function') render();
+      if (data && data.meta && data.meta.app === 'shotlist-maker' && Array.isArray(data.shots)){
+        window.shots = data.shots.map(s => ({
+          selected:false, starred:!!s.starred, collapsed:true,
+          startTC: s.startTC || s.timecode || '',
+          format: s.format || (typeof guessFormatFromFilename==='function' && s.filename ? guessFormatFromFilename(s.filename) : s.format),
+          mediaType: s.mediaType || 'image',
+          imageURL: s.imageURL || '',
+          previewURL: s.previewURL || '',
+          isAnimated: !!s.isAnimated,
+          webpFrame: Number.isInteger(s.webpFrame) ? s.webpFrame : 0,
+          webpTotalFrames: Number.isInteger(s.webpTotalFrames) ? s.webpTotalFrames : 0,
+          ...s
+        }));
+        if (typeof window.resetInfinite === 'function') window.resetInfinite();
+        if (typeof window.render === 'function') window.render();
+      } else {
+        applyShotTemplate(data || {});
+      }
     }catch(e){
-      console.error('Template apply failed:', e);
-      alert('Failed to apply template: '+e.message);
+      console.warn('loadBoardData failed:', e);
+      alert('Failed to load template: ' + (e && e.message ? e.message : e));
     }
-  }
-  
-  // Expose the hook the Templates modal calls
-  window.loadBoardData = applyTemplateData;
-  </script>
+  };
+})();
+</script>
 
 <!-- === Templates Modal (scoped) === -->
 <style id="tplModalStyles">
@@ -1510,7 +1448,6 @@ function loadBoardData(data){ applyShotTemplate(data); }
   })();
 })();
 </script>
-<!-- === /Templates Modal === -->
 
 <script>
 // print
@@ -1609,7 +1546,7 @@ document.body.appendChild(a);
 a.click();
 setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 0);
 });
-</script>
 
+</script>
 </body>
-</html>`;
+</html>
