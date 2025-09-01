@@ -1533,7 +1533,54 @@ importJSONInput.addEventListener('change', async (e)=>{
       alert('Failed to apply template: ' + (err && err.message ? err.message : err));
     }
   }
-  window.loadBoardData = function(data){
+  
+/* === applyShotTemplate override to load templates as full board when given a URL/object === */
+(function(){
+  try{
+    const __applyOld = window.applyShotTemplate;
+    window.applyShotTemplate = async function(tpl){
+      try{
+        // Allow passing a URL string or an object with url/file to fetch
+        let data = null;
+        if (typeof tpl === 'string'){
+          const res = await fetch(tpl, {cache:'no-store'}); if(!res.ok) throw new Error('HTTP '+res.status);
+          data = await res.json();
+        } else if (tpl && (tpl.url || tpl.file)){
+          const res = await fetch(tpl.url || tpl.file, {cache:'no-store'}); if(!res.ok) throw new Error('HTTP '+res.status);
+          data = await res.json();
+        } else {
+          data = tpl;
+        }
+        // Unwrap carriers like tpl/template/board/data/payload -> {shots:[...]}
+        const unwrap = (obj)=>{
+          if (!obj || typeof obj!=='object') return obj;
+          if (Array.isArray(obj)) return obj;
+          const keys = ['tpl','template','board','data','payload'];
+          for(const k of keys){ const v=obj[k]; if (v && typeof v==='object' && Array.isArray(v.shots)) return v; }
+          for(const [k,v] of Object.entries(obj)){ if (v && typeof v==='object' && Array.isArray(v.shots)) return v; }
+          return obj;
+        };
+        data = unwrap(data);
+        if (Array.isArray(data)){
+          data = { meta:{ app:'shotlist-maker', source:'template' }, shots: data };
+        }
+        // If looks like a fragment with shots but no meta, make it a full board
+        if (data && Array.isArray(data.shots) && !(data.meta && data.meta.app==='shotlist-maker')){
+          data = { meta:{ app:'shotlist-maker', source:'template' }, shots: data.shots };
+        }
+        if (data && Array.isArray(data.shots) && typeof window.loadBoardData === 'function'){
+          return window.loadBoardData(data);
+        }
+        // Fallback to original behavior
+        return __applyOld ? __applyOld.call(this, tpl) : undefined;
+      }catch(err){
+        console.warn('applyShotTemplate override failed:', err);
+        return __applyOld ? __applyOld.call(this, tpl) : undefined;
+      }
+    };
+  }catch(e){ console.warn('applyShotTemplate override install failed:', e); }
+})();
+window.loadBoardData = function(data){
     try{
       if (data && data.meta && data.meta.app === 'shotlist-maker' && Array.isArray(data.shots)){
         window.shots = data.shots.map(s => {
@@ -1739,10 +1786,33 @@ async function chooseFolderAndRelink(options){
   overlay?.addEventListener('click', (e)=>{ if(e.target===overlay) closeModal(); });
   document.getElementById('btnTemplates')?.addEventListener('click', openModal);
 
+  function unwrapShotsCarrier(obj){
+    if (!obj || typeof obj !== 'object') return obj;
+    if (Array.isArray(obj)) return obj;
+    // Common wrappers: tpl, template, board, data, payload
+    const candidates = ['tpl','template','board','data','payload'];
+    for (const k of candidates){
+      const v = obj[k];
+      if (v && typeof v === 'object' && Array.isArray(v.shots)) {
+        console.warn('[templates] unwrapped carrier key:', k);
+        return v;
+      }
+    }
+    // Generic: find first nested object with shots[]
+    for (const [k,v] of Object.entries(obj)){
+      if (v && typeof v === 'object' && Array.isArray(v.shots)) {
+        console.warn('[templates] unwrapped generic carrier key:', k);
+        return v;
+      }
+    }
+    return obj;
+  }
+
+
   
 
   function loadTemplateData(raw){
-    let data = raw;
+    let data = unwrapShotsCarrier(raw);
     try{
       if (Array.isArray(data)) {
         data = { meta:{ app:'shotlist-maker', source:'template' }, shots: data };
@@ -1752,12 +1822,11 @@ async function chooseFolderAndRelink(options){
       if (looksLikeFragment && boardEmpty) {
         data = { meta:{ app:'shotlist-maker', source:'template' }, shots: data.shots };
       }
+      console.warn('[templates] loading as full-board template');
       if (data && data.meta && data.meta.app==='shotlist-maker' && Array.isArray(data.shots)) {
         if (typeof window.loadBoardData === 'function') window.loadBoardData(data);
         else if (typeof window.applyShotTemplate === 'function') window.applyShotTemplate({ mode:'replace', shots: data.shots });
-      } else {
-        const hasShots = Array.isArray(window.shots) && window.shots.length>0;
-        if (!hasShots && Array.isArray(data && data.shots)) {
+      } else { console.warn('[templates] treating as fragment'); const hasShots = Array.isArray(window.shots) && window.shots.length>0; if (!hasShots && Array.isArray(data && data.shots)) {
           alert('Template loaded, but there are no shots on the board to apply to. Add/import shots first, or set mode:"replace" in the template.');
         }
         if (typeof window.applyShotTemplate === 'function') window.applyShotTemplate(data || {});
