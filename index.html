@@ -265,14 +265,6 @@ canvas.webpCanvas{max-width:100%;height:auto;border-radius:8px;box-shadow:0 2px 
 <script>
 // Ensure WebPPlayer exists early (runs before main script)
 (function(){
-  function dataURLtoBlob(dataURL){
-    try{
-      const [meta,b64] = dataURL.split(',');
-      const mime = (meta.match(/^data:([^;]+);base64$/)||[])[1] || 'application/octet-stream';
-      const bin=atob(b64); const len=bin.length; const u8=new Uint8Array(len); for(let i=0;i<len;i++) u8[i]=bin.charCodeAt(i);
-      return new Blob([u8],{type:mime});
-    }catch(e){ console.warn('dataURLtoBlob failed', e); return null; }
-  }
   if ('WebPPlayer' in window) return;
   window._webpPlayers = window._webpPlayers || new Map();
   // Minimal WebP canvas player using WebCodecs
@@ -365,113 +357,6 @@ rebindCanvas(newCanvas){
   }
   window.WebPPlayer = WebPPlayer;
 })();
-
-async function gatherFilesFromDirHandle(dirHandle){
-  const files = [];
-  async function walk(handle){
-    try{
-      for await (const [name, h] of handle.entries()){
-        if (h.kind === 'file'){
-          try{
-            const f = await h.getFile();
-            if ((f.type||'').startsWith('video/')) files.push(f);
-          }catch{}
-        }else if (h.kind === 'directory'){
-          await walk(h);
-        }
-      }
-    }catch(e){ /* not supported or denied */ }
-  }
-  await walk(dirHandle);
-  return files;
-}
-
-function buildSigKey(sig){
-  if(!sig) return '';
-  const name = (sig.name||'').toLowerCase();
-  const size = sig.size||0;
-  const lm   = sig.lastModified||0;
-  const type = (sig.type||'').toLowerCase();
-  return [name, size, lm, type].join('|');
-}
-
-async function relinkFromFileList(files, onlyMissing){
-  const byStrong = new Map();
-  const byName   = new Map();
-  for (const f of files){
-    const key = buildSigKey({name:f.name,size:f.size,lastModified:f.lastModified,type:f.type});
-    byStrong.set(key, f);
-    byName.set((f.name||'').toLowerCase(), f);
-  }
-  let relinked = 0;
-  for (const s of shots){
-    if (s.mediaType !== 'video') continue;
-    if (onlyMissing && s.previewURL) continue;
-    const sig = s.sourceHint || {name:s.filename||''};
-    const strong = buildSigKey(sig);
-    let file = byStrong.get(strong);
-    if (!file){
-      file = byName.get((sig.name||s.filename||'').toLowerCase());
-    }
-    if (file){
-      try{
-        const url = URL.createObjectURL(file);
-        s.previewURL = url;
-        s.filename = file.name || s.filename;
-        s.format = inferFormat(file);
-        if (!s.thumb){
-          try{ s.thumb = await videoPoster(file) || ''; }catch{}
-        }
-        s.sourceHint = { name:file.name||'', size:(file.size||0), lastModified:(file.lastModified||0), type:file.type||'' };
-        relinked++;
-      }catch(e){ console.warn('Failed to relink', e); }
-    }
-  }
-  if (relinked){
-    render();
-    alert('Relinked ' + relinked + ' video(s).');
-  }else{
-    alert('No matching videos found in the selected folder.');
-  }
-}
-
-function countMissingVideos(){
-  return shots.filter(s => s.mediaType==='video' && !s.previewURL).length;
-}
-
-async function maybeAutoRelinkVideos(){
-  const missing = countMissingVideos();
-  if (!missing) return;
-  const go = confirm('This board has ' + missing + ' video(s) that need re-linking. Pick a folder to scan now?');
-  if (go){ await chooseFolderAndRelink({onlyMissing:true}); }
-}
-
-async function chooseFolderAndRelink(options){
-  options = options || {};
-  const onlyMissing = options.onlyMissing !== false; // default true
-  let files = [];
-
-  if (window.showDirectoryPicker){
-    try{
-      const dirHandle = await window.showDirectoryPicker({mode:'read'});
-      files = await gatherFilesFromDirHandle(dirHandle);
-    }catch(e){ /* user cancelled */ }
-  }
-  if (!files.length){
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.multiple = true;
-    input.accept = 'video/*';
-    input.webkitdirectory = true;
-    input.directory = true;
-    const picked = await new Promise(res => { input.onchange = ()=> res([...input.files]); input.click(); });
-    files = picked || [];
-  }
-  if (!files.length) return;
-  await relinkFromFileList(files, onlyMissing);
-}
-
-
 </script>
 
 <style id="drop-follow-box-style">
@@ -501,113 +386,6 @@ async function chooseFolderAndRelink(options){
       return box;
     };
   })();
-
-async function gatherFilesFromDirHandle(dirHandle){
-  const files = [];
-  async function walk(handle){
-    try{
-      for await (const [name, h] of handle.entries()){
-        if (h.kind === 'file'){
-          try{
-            const f = await h.getFile();
-            if ((f.type||'').startsWith('video/')) files.push(f);
-          }catch{}
-        }else if (h.kind === 'directory'){
-          await walk(h);
-        }
-      }
-    }catch(e){ /* not supported or denied */ }
-  }
-  await walk(dirHandle);
-  return files;
-}
-
-function buildSigKey(sig){
-  if(!sig) return '';
-  const name = (sig.name||'').toLowerCase();
-  const size = sig.size||0;
-  const lm   = sig.lastModified||0;
-  const type = (sig.type||'').toLowerCase();
-  return [name, size, lm, type].join('|');
-}
-
-async function relinkFromFileList(files, onlyMissing){
-  const byStrong = new Map();
-  const byName   = new Map();
-  for (const f of files){
-    const key = buildSigKey({name:f.name,size:f.size,lastModified:f.lastModified,type:f.type});
-    byStrong.set(key, f);
-    byName.set((f.name||'').toLowerCase(), f);
-  }
-  let relinked = 0;
-  for (const s of shots){
-    if (s.mediaType !== 'video') continue;
-    if (onlyMissing && s.previewURL) continue;
-    const sig = s.sourceHint || {name:s.filename||''};
-    const strong = buildSigKey(sig);
-    let file = byStrong.get(strong);
-    if (!file){
-      file = byName.get((sig.name||s.filename||'').toLowerCase());
-    }
-    if (file){
-      try{
-        const url = URL.createObjectURL(file);
-        s.previewURL = url;
-        s.filename = file.name || s.filename;
-        s.format = inferFormat(file);
-        if (!s.thumb){
-          try{ s.thumb = await videoPoster(file) || ''; }catch{}
-        }
-        s.sourceHint = { name:file.name||'', size:(file.size||0), lastModified:(file.lastModified||0), type:file.type||'' };
-        relinked++;
-      }catch(e){ console.warn('Failed to relink', e); }
-    }
-  }
-  if (relinked){
-    render();
-    alert('Relinked ' + relinked + ' video(s).');
-  }else{
-    alert('No matching videos found in the selected folder.');
-  }
-}
-
-function countMissingVideos(){
-  return shots.filter(s => s.mediaType==='video' && !s.previewURL).length;
-}
-
-async function maybeAutoRelinkVideos(){
-  const missing = countMissingVideos();
-  if (!missing) return;
-  const go = confirm('This board has ' + missing + ' video(s) that need re-linking. Pick a folder to scan now?');
-  if (go){ await chooseFolderAndRelink({onlyMissing:true}); }
-}
-
-async function chooseFolderAndRelink(options){
-  options = options || {};
-  const onlyMissing = options.onlyMissing !== false; // default true
-  let files = [];
-
-  if (window.showDirectoryPicker){
-    try{
-      const dirHandle = await window.showDirectoryPicker({mode:'read'});
-      files = await gatherFilesFromDirHandle(dirHandle);
-    }catch(e){ /* user cancelled */ }
-  }
-  if (!files.length){
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.multiple = true;
-    input.accept = 'video/*';
-    input.webkitdirectory = true;
-    input.directory = true;
-    const picked = await new Promise(res => { input.onchange = ()=> res([...input.files]); input.click(); });
-    files = picked || [];
-  }
-  if (!files.length) return;
-  await relinkFromFileList(files, onlyMissing);
-}
-
-
 </script>
 
 <header>
@@ -618,20 +396,8 @@ async function chooseFolderAndRelink(options){
     <div class="bar">
       <div class="group">
         <label class="filebtn btn"><input id="file" type="file" accept="image/*,video/*" multiple> Add Shots</label>
-        <button id="selectAll" class="btn">Select All</button>
-        <button id="deselectAll" class="btn muted">Deselect</button>
-        <button id="deleteSel" class="btn danger">Delete Selected</button>
         <button id="clearAll" class="btn danger">Clear All</button>
       </div>
-
-      <div class="group">
-        <button id="btnTemplates" class="btn"> Folders</button>
-        <button id="exportJSON" class="btn"> Export JSON</button>
-        <label class="filebtn btn"><input id="importJSON" type="file" accept="application/json"> Import JSON</label>
-        <button id="relinkVideos" class="btn"> Relink Videos</button>
-      </div>
-
-      <div class="spacer"></div>
 
       <div class="group">
         <span class="label">Mode</span>
@@ -640,14 +406,27 @@ async function chooseFolderAndRelink(options){
           <button id="modePage">Page</button>
         </div>
         <label class="mini" style="display:inline-flex; gap:6px; align-items:center; margin-left:8px">
-          <input type="checkbox" id="starFilter"> ★ Star Filter
+          <input type="checkbox" id="starFilter"> ★ Show starred only
         </label>
         <button id="collapseAllCards" class="btn" disabled title="Collapse all cards in Page Mode">Collapse All</button>
         <button id="expandAllCards" class="btn" disabled title="Expand all cards in Page Mode">Expand All</button>
-        <button id="printBtn" class="btn ok"> Print / Save to PDF</button>
-        <button id="exportCSV" class="btn ok"> Export CSV</butto>
       </div>
-        
+
+      <div class="group">
+        <button id="selectAll" class="btn">Select All</button>
+        <button id="deselectAll" class="btn muted">Deselect</button>
+        <button id="deleteSel" class="btn danger">Delete Selected</button>
+      </div>
+
+      <div class="spacer"></div>
+
+      <div class="group">
+        <button id="printBtn" class="btn ok"> Print / Save to PDF</button>
+        <button id="exportJSON" class="btn"> Export JSON</button>
+        <label class="filebtn btn"><input id="importJSON" type="file" accept="application/json"> Import JSON</label>
+        <button id="exportCSV" class="btn"> Export CSV</button>
+        <button id="btnTemplates" class="btn"> Templates</button>
+      </div>
     </div>
   </div>
 </header>
@@ -655,6 +434,7 @@ async function chooseFolderAndRelink(options){
 <main>
   <div id="dz" class="dropzone">
     <div><strong>Drop your screenshots here</strong> or use <span class="kbd">Add Shots</span>.</div>
+    <div class="mini" style="margin-top:6px">Tips: you can drag rows/cards to reorder. Use the print button to generate a print-friendly view and “Save as PDF”.</div>
   </div>
 
   <!-- Collapsible Batch Tools -->
@@ -842,7 +622,6 @@ async function chooseFolderAndRelink(options){
   const exportJSONBtn = document.getElementById('exportJSON');
   const importJSONInput = document.getElementById('importJSON');
   const exportCSVBtn = document.getElementById('exportCSV');
-  const relinkVideosBtn = document.getElementById('relinkVideos');
   const parseTCBtn = document.getElementById('parseTC');
   const applyBatchBtn = document.getElementById('applyBatch');
   const batchTitle = document.getElementById('batchTitle');
@@ -1221,10 +1000,17 @@ card.addEventListener('dragleave',()=>{
   const box = ensureDropBox();
   box.style.display = 'none';
 });
-card.addEventListener('drop',(e)=>{ e.preventDefault(); card.classList.remove('ghost'); reorderById(e.dataTransfer.getData('text/plain'), s.id); });
+card.addEventListener('drop',(e)=>{
+  e.preventDefault();
+  const box = ensureDropBox();
+  box.style.display = 'none';
+  reorderById(e.dataTransfer.getData('text/plain'), s.id);
+});
+card.addEventListener('dragover',(e)=>{ e.preventDefault(); card.classList.add('ghost'); });
+      card.addEventListener('dragleave',()=> card.classList.remove('ghost'));
+      card.addEventListener('drop',(e)=>{ e.preventDefault(); card.classList.remove('ghost'); reorderById(e.dataTransfer.getData('text/plain'), s.id); });
 
-
-  card.querySelector('.del').addEventListener('click',()=> removeShot(s.id));
+      card.querySelector('.del').addEventListener('click',()=> removeShot(s.id));
       pageContainer.appendChild(card);
     });
   }
@@ -1233,6 +1019,14 @@ card.addEventListener('drop',(e)=>{ e.preventDefault(); card.classList.remove('g
     if(!srcId||srcId===destId) return;
     const from=shots.findIndex(x=>x.id===srcId), to=shots.findIndex(x=>x.id===destId);
     if(from<0||to<0) return; const [moved]=shots.splice(from,1); shots.splice(to,0,moved); render();
+  }
+  function removeShot(id){
+    const s=shots.find(x=>x.id===id);
+    if(s){
+      if(s.mediaType==='video'&&s.previewURL) try{ URL.revokeObjectURL(s.previewURL);}catch{}
+      if(s.imageURL) try{ URL.revokeObjectURL(s.imageURL);}catch{}
+    }
+    shots=shots.filter(x=>x.id!==id); render();
   }
 
   // ingest
@@ -1304,7 +1098,6 @@ card.addEventListener('drop',(e)=>{ e.preventDefault(); card.classList.remove('g
         filename: f.name,
         format: inferFormat(f),
         mediaType: 'video',
-        sourceHint: { name: f.name || '', size: (f.size||0), lastModified: (f.lastModified||0), type: f.type || '' },
         previewURL: url,
         thumb: poster,
         webpFrame: 0,
@@ -1348,7 +1141,6 @@ card.addEventListener('drop',(e)=>{ e.preventDefault(); card.classList.remove('g
     }
   }else{
     const poster=await videoPoster(file)||''; shot.mediaType='video'; shot.previewURL=URL.createObjectURL(file); shot.thumb=poster; shot.isAnimated=false; shot.webpFrame=0; shot.webpTotalFrames=0;
-    shot.sourceHint = { name: file.name || '', size: (file.size||0), lastModified: (file.lastModified||0), type: file.type || '' }; shot.webpFrame=0; shot.webpTotalFrames=0;
     if(shot.imageURL){ try{ URL.revokeObjectURL(shot.imageURL);}catch{} } delete shot.imageURL;
   }
 }
@@ -1357,7 +1149,6 @@ card.addEventListener('drop',(e)=>{ e.preventDefault(); card.classList.remove('g
   selectAllBtn.addEventListener('click',()=>{ shots.forEach(s=>s.selected=true); render(); });
   deselectAllBtn.addEventListener('click',()=>{ shots.forEach(s=>s.selected=false); render(); });
   deleteSelBtn.addEventListener('click',()=>{ shots.filter(s=>s.selected).map(s=>s.id).forEach(removeShot); });
-  relinkVideosBtn.addEventListener('click',()=>{ chooseFolderAndRelink({onlyMissing:false}); });
   clearAllBtn.addEventListener('click',()=>{ if(confirm('Remove all items?')){ shots.forEach(s=>{ if(s.mediaType==='video'&&s.previewURL) try{URL.revokeObjectURL(s.previewURL);}catch{}; if(s.imageURL) try{URL.revokeObjectURL(s.imageURL);}catch{} }); shots=[]; render(); }});
 
   // batch replace (not append)
@@ -1384,82 +1175,28 @@ card.addEventListener('drop',(e)=>{ e.preventDefault(); card.classList.remove('g
   });
 
   // export/import
-  
-exportJSONBtn.addEventListener('click', async ()=>{
-  const blobToDataURL = (blob)=> new Promise((res,rej)=>{
-    try{ const fr = new FileReader(); fr.onerror = rej; fr.onload = ()=> res(fr.result); fr.readAsDataURL(blob); }
-    catch(e){ rej(e); }
+  exportJSONBtn.addEventListener('click',()=>{
+    const safe=shots.map(({previewURL, imageURL, ...rest})=>rest);
+    const data={meta:{app:'shotlist-maker',v:5,exported:new Date().toISOString()}, shots:safe};
+    const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}); const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob); a.download='shotlist.json'; a.click(); URL.revokeObjectURL(a.href);
   });
-  const outShots = [];
-  for (const s of shots){
-    const { previewURL, imageURL, ...rest } = s;
-    const out = { ...rest };
-    if (s.mediaType === 'video' && s.sourceHint){ out.sourceHint = s.sourceHint; }
-    // Embed animated WebP bytes so import can restore playback
-    if (s.mediaType === 'image' && (s.isAnimated || (String(s.format).toUpperCase()==='WEBP' && ((s.webpTotalFrames|0)>1 || (s.webpFrame|0)>0))) && imageURL){
-      try{
-        const resp = await fetch(imageURL);
-        const blob = await resp.blob();
-        out.imageData = await blobToDataURL(blob);
-      }catch(e){ console.warn('Failed to embed WebP data for export', e); }
-    }
-    outShots.push(out);
-  }
-  const data = { meta:{app:'shotlist-maker', v:6, exported:new Date().toISOString()}, shots: outShots };
-  const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
-  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='shotlist.json'; a.click();
-  setTimeout(()=> URL.revokeObjectURL(a.href), 0);
-});
-  
-importJSONInput.addEventListener('change', async (e)=>{
-  const f=e.target.files[0]; if(!f) return;
-  const dataURLtoBlob = (dataURL)=>{
+  importJSONInput.addEventListener('change',async (e)=>{
+    const f=e.target.files[0]; if(!f) return;
     try{
-      const [meta, b64] = dataURL.split(',');
-      const mime = (meta.match(/^data:([^;]+);base64$/)||[])[1] || 'application/octet-stream';
-      const bin = atob(b64); const len = bin.length;
-      const u8 = new Uint8Array(len); for(let i=0;i<len;i++) u8[i] = bin.charCodeAt(i);
-      return new Blob([u8], {type: mime});
-    }catch(e){ console.warn('dataURLtoBlob failed', e); return null; }
-  };
-  try{
-    const data=JSON.parse(await f.text());
-    if(Array.isArray(data.shots)){
-      shots = data.shots.map((s)=>{
-        const base = {
-          sourceHint: s.sourceHint || { name: s.filename || '', size: s.size || 0, lastModified: s.lastModified || 0, type: s.type || '' },
-          selected:false, starred:!!s.starred, collapsed:true,
-          startTC: s.startTC || s.timecode || '',
-          format: s.format || (typeof guessFormatFromFilename==='function' && s.filename ? guessFormatFromFilename(s.filename) : s.format),
-          mediaType: s.mediaType || 'image',
-          ...s
-        };
-        // Restore animated WebP from embedded data
-        if (base.mediaType === 'image' && base.imageData){
-          const blob = dataURLtoBlob(base.imageData);
-          if (blob){
-            try{ base.imageURL = URL.createObjectURL(blob); base.isAnimated = true; if(!base.format) base.format='WEBP'; }catch{}
-          }
-        }
-        base.isAnimated = !!base.isAnimated;
-        base.webpFrame = Number.isInteger(base.webpFrame) ? base.webpFrame : 0;
-        base.webpTotalFrames = Number.isInteger(base.webpTotalFrames) ? base.webpTotalFrames : 0;
-        return base;
-      });
-      if (typeof resetInfinite === 'function') resetInfinite();
-      if (typeof render === 'function') render();
-      await maybeAutoRelinkVideos();
-    } else {
-      alert('JSON missing "shots" array.');
-    }
-  }catch(err){
-    console.error(err);
-    alert('Failed to import JSON.');
-  }
-  importJSONInput.value='';
-});
+      const data=JSON.parse(await f.text());
+      if(Array.isArray(data.shots)){
+        shots=data.shots.map(s=>({selected:false, starred:false, mediaType:'image', collapsed:true, ...s,
+          startTC:s.startTC||(s.timecode||''), format:s.format||guessFormatFromFilename(s.filename)}));
+        resetInfinite(); render();
+      }else alert('JSON missing "shots" array.');
+    }catch{ alert('Failed to import JSON.'); }
+    importJSONInput.value='';
+  });
+
 
 <!-- Templates adapter for Shot List Maker -->
+
 (function(){
   function applyShotTemplate(tpl){
     try{
@@ -1479,9 +1216,7 @@ importJSONInput.addEventListener('change', async (e)=>{
       if (Array.isArray(tpl && tpl.shots) && tpl.shots.length){
         const mode = tpl.mode || 'apply';
         if (mode === 'replace'){
-          window.shots = tpl.shots.map((r,i)=> {
-            const base = {
-          sourceHint: s.sourceHint || { name: s.filename || '', size: s.size || 0, lastModified: s.lastModified || 0, type: s.type || '' }, 
+          window.shots = tpl.shots.map((r,i)=> ({
             id: crypto.randomUUID(),
             filename: r.filename || '',
             format: r.format || (typeof guessFormatFromFilename==='function' && r.filename ? guessFormatFromFilename(r.filename) : ''),
@@ -1503,13 +1238,7 @@ importJSONInput.addEventListener('change', async (e)=>{
             selected:false,
             starred: (r.starred != null ? !!r.starred : !!defaults.starred),
             collapsed:true
-           };
-            if (base.mediaType==='image' && r.imageData && !base.imageURL){
-              const b = dataURLtoBlob(r.imageData);
-              if (b){ try{ base.imageURL = URL.createObjectURL(b); base.isAnimated = true; if(!base.format) base.format='WEBP'; }catch{} }
-            }
-            return base;
-          });
+          }));
         } else {
           for (let i=0;i<tpl.shots.length;i++){
             const r = tpl.shots[i], s = target[i]; if(!s) break;
@@ -1535,27 +1264,19 @@ importJSONInput.addEventListener('change', async (e)=>{
   window.loadBoardData = function(data){
     try{
       if (data && data.meta && data.meta.app === 'shotlist-maker' && Array.isArray(data.shots)){
-        window.shots = data.shots.map(s => {
-          const base = {
-          sourceHint: s.sourceHint || { name: s.filename || '', size: s.size || 0, lastModified: s.lastModified || 0, type: s.type || '' },
-            selected:false, starred:!!s.starred, collapsed:true,
-            startTC: s.startTC || s.timecode || '',
-            format: s.format || (typeof guessFormatFromFilename==='function' && s.filename ? guessFormatFromFilename(s.filename) : s.format),
-            mediaType: s.mediaType || 'image',
-            imageURL: s.imageURL || '',
-            previewURL: s.previewURL || '',
-            isAnimated: !!s.isAnimated,
-            webpFrame: Number.isInteger(s.webpFrame) ? s.webpFrame : 0,
-            webpTotalFrames: Number.isInteger(s.webpTotalFrames) ? s.webpTotalFrames : 0,
-            ...s
-          };
-          if (base.mediaType==='image' && base.imageData && !base.imageURL){
-            const b = dataURLtoBlob(base.imageData);
-            if (b){ try{ base.imageURL = URL.createObjectURL(b); base.isAnimated = true; if(!base.format) base.format='WEBP'; }catch{} }
-          }
-          return base;
-        });
-if (typeof window.resetInfinite === 'function') window.resetInfinite();
+        window.shots = data.shots.map(s => ({
+          selected:false, starred:!!s.starred, collapsed:true,
+          startTC: s.startTC || s.timecode || '',
+          format: s.format || (typeof guessFormatFromFilename==='function' && s.filename ? guessFormatFromFilename(s.filename) : s.format),
+          mediaType: s.mediaType || 'image',
+          imageURL: s.imageURL || '',
+          previewURL: s.previewURL || '',
+          isAnimated: !!s.isAnimated,
+          webpFrame: Number.isInteger(s.webpFrame) ? s.webpFrame : 0,
+          webpTotalFrames: Number.isInteger(s.webpTotalFrames) ? s.webpTotalFrames : 0,
+          ...s
+        }));
+        if (typeof window.resetInfinite === 'function') window.resetInfinite();
         if (typeof window.render === 'function') window.render();
       } else {
         applyShotTemplate(data || {});
@@ -1566,115 +1287,7 @@ if (typeof window.resetInfinite === 'function') window.resetInfinite();
     }
   };
 })();
-
-async function gatherFilesFromDirHandle(dirHandle){
-  const files = [];
-  async function walk(handle){
-    try{
-      for await (const [name, h] of handle.entries()){
-        if (h.kind === 'file'){
-          try{
-            const f = await h.getFile();
-            if ((f.type||'').startsWith('video/')) files.push(f);
-          }catch{}
-        }else if (h.kind === 'directory'){
-          await walk(h);
-        }
-      }
-    }catch(e){ /* not supported or denied */ }
-  }
-  await walk(dirHandle);
-  return files;
-}
-
-function buildSigKey(sig){
-  if(!sig) return '';
-  const name = (sig.name||'').toLowerCase();
-  const size = sig.size||0;
-  const lm   = sig.lastModified||0;
-  const type = (sig.type||'').toLowerCase();
-  return [name, size, lm, type].join('|');
-}
-
-async function relinkFromFileList(files, onlyMissing){
-  const byStrong = new Map();
-  const byName   = new Map();
-  for (const f of files){
-    const key = buildSigKey({name:f.name,size:f.size,lastModified:f.lastModified,type:f.type});
-    byStrong.set(key, f);
-    byName.set((f.name||'').toLowerCase(), f);
-  }
-  let relinked = 0;
-  for (const s of shots){
-    if (s.mediaType !== 'video') continue;
-    if (onlyMissing && s.previewURL) continue;
-    const sig = s.sourceHint || {name:s.filename||''};
-    const strong = buildSigKey(sig);
-    let file = byStrong.get(strong);
-    if (!file){
-      file = byName.get((sig.name||s.filename||'').toLowerCase());
-    }
-    if (file){
-      try{
-        const url = URL.createObjectURL(file);
-        s.previewURL = url;
-        s.filename = file.name || s.filename;
-        s.format = inferFormat(file);
-        if (!s.thumb){
-          try{ s.thumb = await videoPoster(file) || ''; }catch{}
-        }
-        s.sourceHint = { name:file.name||'', size:(file.size||0), lastModified:(file.lastModified||0), type:file.type||'' };
-        relinked++;
-      }catch(e){ console.warn('Failed to relink', e); }
-    }
-  }
-  if (relinked){
-    render();
-    alert('Relinked ' + relinked + ' video(s).');
-  }else{
-    alert('No matching videos found in the selected folder.');
-  }
-}
-
-function countMissingVideos(){
-  return shots.filter(s => s.mediaType==='video' && !s.previewURL).length;
-}
-
-async function maybeAutoRelinkVideos(){
-  const missing = countMissingVideos();
-  if (!missing) return;
-  const go = confirm('This board has ' + missing + ' video(s) that need re-linking. Pick a folder to scan now?');
-  if (go){ await chooseFolderAndRelink({onlyMissing:true}); }
-}
-
-async function chooseFolderAndRelink(options){
-  options = options || {};
-  const onlyMissing = options.onlyMissing !== false; // default true
-  let files = [];
-
-  if (window.showDirectoryPicker){
-    try{
-      const dirHandle = await window.showDirectoryPicker({mode:'read'});
-      files = await gatherFilesFromDirHandle(dirHandle);
-    }catch(e){ /* user cancelled */ }
-  }
-  if (!files.length){
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.multiple = true;
-    input.accept = 'video/*';
-    input.webkitdirectory = true;
-    input.directory = true;
-    const picked = await new Promise(res => { input.onchange = ()=> res([...input.files]); input.click(); });
-    files = picked || [];
-  }
-  if (!files.length) return;
-  await relinkFromFileList(files, onlyMissing);
-}
-
-
 </script>
-
 
 <!-- === Templates Modal (scoped) === -->
 <style id="tplModalStyles">
@@ -1834,113 +1447,6 @@ async function chooseFolderAndRelink(options){
     try{ const sp = new URLSearchParams(location.search); const src = sp.get('src'); if (src){ const data = await fetchJSON(src); if (typeof loadBoardData === 'function') loadBoardData(data); } }catch(e){ console.warn('Auto-load via ?src failed:', e); }
   })();
 })();
-
-async function gatherFilesFromDirHandle(dirHandle){
-  const files = [];
-  async function walk(handle){
-    try{
-      for await (const [name, h] of handle.entries()){
-        if (h.kind === 'file'){
-          try{
-            const f = await h.getFile();
-            if ((f.type||'').startsWith('video/')) files.push(f);
-          }catch{}
-        }else if (h.kind === 'directory'){
-          await walk(h);
-        }
-      }
-    }catch(e){ /* not supported or denied */ }
-  }
-  await walk(dirHandle);
-  return files;
-}
-
-function buildSigKey(sig){
-  if(!sig) return '';
-  const name = (sig.name||'').toLowerCase();
-  const size = sig.size||0;
-  const lm   = sig.lastModified||0;
-  const type = (sig.type||'').toLowerCase();
-  return [name, size, lm, type].join('|');
-}
-
-async function relinkFromFileList(files, onlyMissing){
-  const byStrong = new Map();
-  const byName   = new Map();
-  for (const f of files){
-    const key = buildSigKey({name:f.name,size:f.size,lastModified:f.lastModified,type:f.type});
-    byStrong.set(key, f);
-    byName.set((f.name||'').toLowerCase(), f);
-  }
-  let relinked = 0;
-  for (const s of shots){
-    if (s.mediaType !== 'video') continue;
-    if (onlyMissing && s.previewURL) continue;
-    const sig = s.sourceHint || {name:s.filename||''};
-    const strong = buildSigKey(sig);
-    let file = byStrong.get(strong);
-    if (!file){
-      file = byName.get((sig.name||s.filename||'').toLowerCase());
-    }
-    if (file){
-      try{
-        const url = URL.createObjectURL(file);
-        s.previewURL = url;
-        s.filename = file.name || s.filename;
-        s.format = inferFormat(file);
-        if (!s.thumb){
-          try{ s.thumb = await videoPoster(file) || ''; }catch{}
-        }
-        s.sourceHint = { name:file.name||'', size:(file.size||0), lastModified:(file.lastModified||0), type:file.type||'' };
-        relinked++;
-      }catch(e){ console.warn('Failed to relink', e); }
-    }
-  }
-  if (relinked){
-    render();
-    alert('Relinked ' + relinked + ' video(s).');
-  }else{
-    alert('No matching videos found in the selected folder.');
-  }
-}
-
-function countMissingVideos(){
-  return shots.filter(s => s.mediaType==='video' && !s.previewURL).length;
-}
-
-async function maybeAutoRelinkVideos(){
-  const missing = countMissingVideos();
-  if (!missing) return;
-  const go = confirm('This board has ' + missing + ' video(s) that need re-linking. Pick a folder to scan now?');
-  if (go){ await chooseFolderAndRelink({onlyMissing:true}); }
-}
-
-async function chooseFolderAndRelink(options){
-  options = options || {};
-  const onlyMissing = options.onlyMissing !== false; // default true
-  let files = [];
-
-  if (window.showDirectoryPicker){
-    try{
-      const dirHandle = await window.showDirectoryPicker({mode:'read'});
-      files = await gatherFilesFromDirHandle(dirHandle);
-    }catch(e){ /* user cancelled */ }
-  }
-  if (!files.length){
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.multiple = true;
-    input.accept = 'video/*';
-    input.webkitdirectory = true;
-    input.directory = true;
-    const picked = await new Promise(res => { input.onchange = ()=> res([...input.files]); input.click(); });
-    files = picked || [];
-  }
-  if (!files.length) return;
-  await relinkFromFileList(files, onlyMissing);
-}
-
-
 </script>
 
 <script>
@@ -2041,113 +1547,6 @@ a.click();
 setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 0);
 });
 
-async function gatherFilesFromDirHandle(dirHandle){
-  const files = [];
-  async function walk(handle){
-    try{
-      for await (const [name, h] of handle.entries()){
-        if (h.kind === 'file'){
-          try{
-            const f = await h.getFile();
-            if ((f.type||'').startsWith('video/')) files.push(f);
-          }catch{}
-        }else if (h.kind === 'directory'){
-          await walk(h);
-        }
-      }
-    }catch(e){ /* not supported or denied */ }
-  }
-  await walk(dirHandle);
-  return files;
-}
-
-function buildSigKey(sig){
-  if(!sig) return '';
-  const name = (sig.name||'').toLowerCase();
-  const size = sig.size||0;
-  const lm   = sig.lastModified||0;
-  const type = (sig.type||'').toLowerCase();
-  return [name, size, lm, type].join('|');
-}
-
-async function relinkFromFileList(files, onlyMissing){
-  const byStrong = new Map();
-  const byName   = new Map();
-  for (const f of files){
-    const key = buildSigKey({name:f.name,size:f.size,lastModified:f.lastModified,type:f.type});
-    byStrong.set(key, f);
-    byName.set((f.name||'').toLowerCase(), f);
-  }
-  let relinked = 0;
-  for (const s of shots){
-    if (s.mediaType !== 'video') continue;
-    if (onlyMissing && s.previewURL) continue;
-    const sig = s.sourceHint || {name:s.filename||''};
-    const strong = buildSigKey(sig);
-    let file = byStrong.get(strong);
-    if (!file){
-      file = byName.get((sig.name||s.filename||'').toLowerCase());
-    }
-    if (file){
-      try{
-        const url = URL.createObjectURL(file);
-        s.previewURL = url;
-        s.filename = file.name || s.filename;
-        s.format = inferFormat(file);
-        if (!s.thumb){
-          try{ s.thumb = await videoPoster(file) || ''; }catch{}
-        }
-        s.sourceHint = { name:file.name||'', size:(file.size||0), lastModified:(file.lastModified||0), type:file.type||'' };
-        relinked++;
-      }catch(e){ console.warn('Failed to relink', e); }
-    }
-  }
-  if (relinked){
-    render();
-    alert('Relinked ' + relinked + ' video(s).');
-  }else{
-    alert('No matching videos found in the selected folder.');
-  }
-}
-
-function countMissingVideos(){
-  return shots.filter(s => s.mediaType==='video' && !s.previewURL).length;
-}
-
-async function maybeAutoRelinkVideos(){
-  const missing = countMissingVideos();
-  if (!missing) return;
-  const go = confirm('This board has ' + missing + ' video(s) that need re-linking. Pick a folder to scan now?');
-  if (go){ await chooseFolderAndRelink({onlyMissing:true}); }
-}
-
-async function chooseFolderAndRelink(options){
-  options = options || {};
-  const onlyMissing = options.onlyMissing !== false; // default true
-  let files = [];
-
-  if (window.showDirectoryPicker){
-    try{
-      const dirHandle = await window.showDirectoryPicker({mode:'read'});
-      files = await gatherFilesFromDirHandle(dirHandle);
-    }catch(e){ /* user cancelled */ }
-  }
-  if (!files.length){
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.multiple = true;
-    input.accept = 'video/*';
-    input.webkitdirectory = true;
-    input.directory = true;
-    const picked = await new Promise(res => { input.onchange = ()=> res([...input.files]); input.click(); });
-    files = picked || [];
-  }
-  if (!files.length) return;
-  await relinkFromFileList(files, onlyMissing);
-}
-
-
 </script>
-
 </body>
 </html>
