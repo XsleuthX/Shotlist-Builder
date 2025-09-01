@@ -1550,10 +1550,23 @@ importJSONInput.addEventListener('change', async (e)=>{
   }
 
 const MANIFEST_URLS = ['templates.json','templates/templates.json','boards.json'];
-  function resolveTemplateURL(file){if(/^https?:\/\//i.test(file)) return file;const repo = detectGhRepo();if(repo) return file;const GH_REPO = window.TPL_GH_REPO||null; const GH_BRANCH = window.TPL_GH_BRANCH||'main';if(GH_REPO){ const clean=String(file).replace(/^\.?\//,'');return `https://raw.githubusercontent.com/${GH_REPO}/${GH_BRANCH}/${clean}`;}return file;}async function fetchJSON(url){ const res = await fetch(url, {cache:'no-store'}); if(!res.ok) throw new Error('HTTP '+res.status+' for '+url); return res.json(); }
+
+// helpers (keep near your modal code)
+  function resolveTemplateURL(file){
+  if (/^https?:\/\//i.test(file)) return file;
+  try{ if (location.hostname.endsWith('github.io')) return file; }catch(_){}
+  const GH_REPO = window.TPL_GH_REPO || null;       // e.g. 'xsleuthx/Shotlist-Builder'
+  const GH_BRANCH = window.TPL_GH_BRANCH || 'main';
+  if (GH_REPO){
+    const clean = String(file).replace(/^\.?\//,'');
+    return `https://raw.githubusercontent.com/${GH_REPO}/${GH_BRANCH}/${clean}`;
+  }
+  return file; // same-origin fallback
+}
+
   function detectGhRepo(){ try{ if(!location.hostname.endsWith('github.io')) return null;
-    const owner = location.hostname.split('.')[0]; const repo = location.pathname.replace(/^\/+/, '').split('/')[0] || null; return (owner && repo) ? {owner, repo} : null; }catch(_){ return null; } }
-  
+  const owner = location.hostname.split('.')[0]; const repo = location.pathname.replace(/^\/+/, '').split('/')[0] || null; return (owner && repo) ? {owner, repo} : null; }catch(_){ return null; } }
+
   async function scanGithub(branch){
     const repo = detectGhRepo(); if(!repo) throw new Error('Not GitHub Pages');
     const {owner, repo:reponame} = repo;
@@ -1571,7 +1584,29 @@ const MANIFEST_URLS = ['templates.json','templates/templates.json','boards.json'
       return { name, file, folder, thumbnail, url: resolveTemplateURL(file) };
     });
   }
-  
+
+  function normalizeToBoardData(raw){
+  let data = raw;
+  if (Array.isArray(data)) data = { shots: data };
+  const carriers = ['tpl','template','board','data','payload'];
+  if (!(data && Array.isArray(data.shots)) && data && typeof data==='object'){
+    for (const k of carriers){
+      const v = data[k];
+      if (v && typeof v==='object' && Array.isArray(v.shots)) { data = v; break; }
+    }
+    if (!(data && Array.isArray(data.shots))){
+      for (const v of Object.values(raw)){
+        if (v && typeof v==='object' && Array.isArray(v.shots)) { data = v; break; }
+      }
+    }
+  }
+  if (!(data && Array.isArray(data.shots))) throw new Error('Template JSON has no shots[]');
+  if (!(data.meta && data.meta.app === 'shotlist-maker')){
+    data = { meta:{ app:'shotlist-maker', source:'template' }, shots: data.shots };
+  }
+  return data;
+}
+
   async function listTemplates(){
     try{ return await scanGithub('main'); }catch(_){}
     try{ return await scanGithub('master'); }catch(_){}
@@ -1617,6 +1652,7 @@ const MANIFEST_URLS = ['templates.json','templates/templates.json','boards.json'
     draw(root); treeEl.appendChild(ul);
   }
   function matchQuery(t,q){ if(!q) return true; const hay = `${t.name||''} ${(t.tags||[]).join(' ')} ${t.file||''}`; return hay.toLowerCase().includes(q.toLowerCase()); }
+
   function renderGrid(){
     grid.innerHTML=''; const q=(searchEl && searchEl.value || '').trim();
     let list = allTemplates.filter(t=>matchQuery(t,q));
@@ -1631,13 +1667,33 @@ const MANIFEST_URLS = ['templates.json','templates/templates.json','boards.json'
       const meta=document.createElement('div'); meta.className='tpl-meta'; meta.textContent = t.folder ? `templates/${t.folder}` : 'templates';
       const actions=document.createElement('div'); actions.className='tpl-actions';
       const loadBtn=document.createElement('button'); loadBtn.className='tpl-btn'; loadBtn.textContent='Load';
-      loadBtn.onclick = async ()=>{ try{ const data = await fetchJSON(t.url || t.file); if (typeof loadBoardData === 'function') loadBoardData(data); rememberRecent(t.file); overlay.classList.remove('show'); }catch(e){ alert('Failed to load '+t.file+': '+e.message); } };
-      const linkBtn=document.createElement('button'); linkBtn.className='tpl-btn'; linkBtn.textContent='Share link';
-      linkBtn.onclick = async ()=>{ const u = new URL(location.href); u.searchParams.set('src', t.file); try{ await navigator.clipboard.writeText(u.toString()); alert('Link copied!'); } catch(e){ prompt('Copy link:', u.toString()); } };
+      
+      loadBtn.onclick = async ()=>{
+  try{
+    const url = t.url || resolveTemplateURL(t.file);
+    const raw = await fetchJSON(url);
+    const board = normalizeToBoardData(raw);
+    if (typeof loadBoardData === 'function') loadBoardData(board);
+    rememberRecent(t.file);
+    overlay.classList.remove('show');
+  }catch(e){
+    console.error('Template load failed:', e);
+    alert('Failed to load '+(t.file||'template')+': '+(e&&e.message?e.message:e));
+  }
+};
+
+linkBtn.onclick = async ()=>{
+  const u = new URL(location.href);
+  u.searchParams.set('src', t.url || resolveTemplateURL(t.file));
+  try { await navigator.clipboard.writeText(u.toString()); alert('Link copied!'); }
+  catch(e){ prompt('Copy link:', u.toString()); }
+};
+      
       actions.appendChild(loadBtn); actions.appendChild(linkBtn);
       card.appendChild(thumb); card.appendChild(name); card.appendChild(meta); card.appendChild(actions); grid.appendChild(card);
     }
   }
+
   searchEl?.addEventListener('input', ()=> renderGrid());
   (async function initTemplates(){
     try{ allTemplates = await listTemplates(); }catch(e){ console.warn('Template discovery failed:', e); allTemplates = []; }
