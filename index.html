@@ -1482,7 +1482,7 @@ importJSONInput.addEventListener('change', async (e)=>{
         if (mode === 'replace'){
           window.shots = tpl.shots.map((r,i)=> {
             const base = {
-          sourceHint: s.sourceHint || { name: s.filename || '', size: s.size || 0, lastModified: s.lastModified || 0, type: s.type || '' }, 
+          sourceHint: r.sourceHint || { name: r.filename || '', size: r.size || 0, lastModified: r.lastModified || 0, type: r.type || '' }, 
             id: crypto.randomUUID(),
             filename: r.filename || '',
             format: r.format || (typeof guessFormatFromFilename==='function' && r.filename ? guessFormatFromFilename(r.filename) : ''),
