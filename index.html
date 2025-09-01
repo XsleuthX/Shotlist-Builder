@@ -175,8 +175,18 @@ footer{position:fixed; bottom:0; left:0; right:0; background:linear-gradient(0de
 .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; background:rgba(255,255,255,.03); border:1px solid var(--line); padding:2px 8px; border-radius:8px; font-size:12px; color:#e6e2d1; box-shadow:var(--shadow-1)}
 .hidden{display:none!important}
 
-</style>
-<style>
+
+/* Toolbar collapse */
+body.toolbar-collapsed header .bar,
+body.toolbar-collapsed header .sub{ display:none !important; }
+#toolbarToggle{ z-index:6 }
+
+/* Dynamic AR for page media */
+.card .media{ aspect-ratio: var(--ar, 16/9); }
+.card .media img,
+.card .media video,
+.card .media canvas.webpCanvas{ width:100%; height:100%; object-fit:contain; }
+
 /* ===== Gutter Guard (conflict-proof) ===== */
 :root{ --gutter: clamp(18px, 4vw, 48px); }
 header > .wrap,
@@ -195,6 +205,69 @@ main{
 @media (min-width: 1600px){
   header > .wrap, footer > .footwrap, main{ max-width: 1400px; }
 }
+
+/* Chevron toolbar toggle - minimal, no circle */
+.chevron-toggle{
+  appearance:none;
+  border:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+  outline:none;
+  font-size:18px;
+  line-height:1;
+  cursor:pointer;
+  padding:0; margin:0;
+  color:var(--ink-dim);
+  transform: translateY(0);
+}
+.chevron-toggle:hover,
+.chevron-toggle:focus{
+  background:transparent !important;
+  box-shadow:none !important;
+  color:var(--ink);
+}
+.chevron-toggle::before,
+.chevron-toggle::after{ display:none !important; }
+
+
+/* Pager */
+.pager .btn.muted{ min-width:72px; }
+.pager .mini{ opacity:.8; }
+
+
+/* Chevron toolbar toggle — ultra minimal */
+button.chevron-toggle{
+  all: unset;
+  display: inline-block;
+  cursor: pointer;
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--ink-dim);
+}
+button.chevron-toggle:hover{ color: var(--ink); }
+
+
+/* Floating pager (Page Mode only) */
+.float-pager{
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 84px; /* sit above fixed footer */
+  z-index: 50;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 12px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  backdrop-filter: blur(6px) saturate(120%);
+  box-shadow: var(--shadow-1);
+}
+.float-pager .btn.muted{ min-width: 48px; padding: 6px 10px 6px 28px; }
+.float-pager .btn.muted::before{ display:none; } /* remove gold dot in tiny buttons */
+
 </style>
 
 <style>
@@ -485,6 +558,12 @@ async function chooseFolderAndRelink(options){
     display:none;
   }
 </style>
+
+<style>
+/* Templates UI removed */
+[id*="template"], [class*="template" i], [data-action*="template" i] { display: none !important; }
+</style>
+
 </head>
 <body>
 
@@ -613,6 +692,7 @@ async function chooseFolderAndRelink(options){
 <header>
   <div class="wrap">
     <h1>Shot List Builder</h1>
+
     <div class="sub">Batch drop your shots → reorder → annotate → export as JSON/CSV → print to PDF.</div>
 
     <div class="bar">
@@ -625,7 +705,9 @@ async function chooseFolderAndRelink(options){
       </div>
 
       <div class="group">
-        <button id="btnTemplates" class="btn"> Folders</button>
+        
+<!-- Templates control removed -->
+
         <button id="exportJSON" class="btn"> Export JSON</button>
         <label class="filebtn btn"><input id="importJSON" type="file" accept="application/json"> Import JSON</label>
         <button id="relinkVideos" class="btn"> Relink Videos</button>
@@ -645,7 +727,7 @@ async function chooseFolderAndRelink(options){
         <button id="collapseAllCards" class="btn" disabled title="Collapse all cards in Page Mode">Collapse All</button>
         <button id="expandAllCards" class="btn" disabled title="Expand all cards in Page Mode">Expand All</button>
         <button id="printBtn" class="btn ok"> Print / Save to PDF</button>
-        <button id="exportCSV" class="btn ok"> Export CSV</butto>
+        <button id="exportCSV" class="btn ok"> Export CSV</button>
       </div>
         
     </div>
@@ -653,12 +735,17 @@ async function chooseFolderAndRelink(options){
 </header>
 
 <main>
+  
+<div style="text-align:center; margin:4px 0 4px;">
+  <button id="toolbarToggle" class="chevron-toggle" title="Hide Toolbar" aria-label="Hide Toolbar">▲</button>
+</div>
+
   <div id="dz" class="dropzone">
     <div><strong>Drop your screenshots here</strong> or use <span class="kbd">Add Shots</span>.</div>
   </div>
 
   <!-- Collapsible Batch Tools -->
-  <details id="batchPanel" class="panel" open style="margin-top:12px">
+  <details id="batchPanel" class="panel" style="margin-top:12px">
     <summary class="panel-summary"><span class="title">Batch Tools</span><span class="spacer"></span><span class="mini">click to show/hide</span></summary>
     <div class="panel-content">
       <div class="topbar">
@@ -666,7 +753,7 @@ async function chooseFolderAndRelink(options){
         <input type="text" id="batchTitle" placeholder="Shot Title">
         <input type="text" id="batchTake" placeholder="Take">
         <input type="text" id="batchCamera" placeholder="Camera">
-        <input type="text" id="batchLens" placeholder="Lens">
+        <input type="text" id="batchLens" placeholder="Shot Size">
         <input type="text" id="batchNotes" placeholder="Notes">
         <input type="text" id="batchDesc" placeholder="Description">
         <button id="applyBatch" class="btn">Apply</button>
@@ -682,6 +769,33 @@ async function chooseFolderAndRelink(options){
       </div>
     </div>
   </details>
+
+<!-- Memory Tools -->
+<details id="memoryPanel" class="panel" style="margin-top:12px">
+  <summary class="panel-summary"><span class="title">Memory Tools</span><span class="spacer"></span>
+    <span class="mini" id="memStats">—</span>
+  </summary>
+  <div class="panel-content">
+    <div class="topbar" style="gap:12px; align-items:flex-end;">
+      <div class="group" style="flex-wrap:wrap;">
+        <span class="label">Actions</span>
+        <button id="memPurgeCache" class="btn muted">Free Cache</button>
+        <button id="memReleaseURLs" class="btn danger">Release URLs</button>
+        <button id="memStripOriginals" class="btn danger">Strip Originals</button>
+      </div>
+      <div class="group">
+        <span class="label">Keep first</span>
+        <input id="memKeepN" type="number" value="24" min="0" max="500" style="width:80px">
+        <span class="mini">items when releasing</span>
+      </div>
+      <div class="group">
+        <span class="label">Page batch size</span>
+        <input id="pageBatchSize" type="number" min="8" max="200" style="width:80px">
+        <button id="applyPageBatch" class="btn">Apply</button>
+      </div>
+    </div>
+  </div>
+</details>
 
   <!-- List Mode -->
   <section id="listSection">
@@ -700,6 +814,13 @@ async function chooseFolderAndRelink(options){
   <section id="pageSection" class="hidden">
     <div id="pageContainer" class="page-grid"></div>
   </section>
+
+  <div id="floatPager" class="float-pager hidden" role="navigation" aria-label="Page navigation">
+    <button id="pagePrev" class="btn muted" title="Previous Page" aria-label="Previous Page">◀</button>
+    <span id="pageInfo" class="mini" aria-live="polite">Page 1 / 1</span>
+    <button id="pageNext" class="btn muted" title="Next Page" aria-label="Next Page">▶</button>
+  </div>
+
 </main>
 
 <footer>
@@ -750,8 +871,8 @@ async function chooseFolderAndRelink(options){
           <input type="text" class="camera" placeholder="FX3 / iPhone 15 / ...">
         </div>
         <div>
-          <label class="mini">Lens</label>
-          <input type="text" class="lens" placeholder="24-70mm @ 50mm">
+          <label class="mini">Shot Size</label>
+          <input type="text" class="lens" placeholder="Wide / CU / ...">
         </div>
       </div>
       <div class="grid2" style="margin-top:8px">
@@ -807,8 +928,8 @@ async function chooseFolderAndRelink(options){
           <input type="text" class="camera" placeholder="FX3 / iPhone 15 / ...">
         </div>
         <div>
-          <label class="mini">Lens</label>
-          <input type="text" class="lens" placeholder="24-70mm @ 50mm">
+          <label class="mini">Shot Size</label>
+          <input type="text" class="lens" placeholder="Wide / CU / ...">
         </div>
       </div>
       <div style="margin-top:8px">
@@ -860,32 +981,82 @@ async function chooseFolderAndRelink(options){
   const collapseAllCardsBtn = document.getElementById('collapseAllCards');
   const expandAllCardsBtn = document.getElementById('expandAllCards');
 
-  let shots = []; // includes {collapsed:boolean}
+  
+let shots = [];
+window._videoEls = window._videoEls || new Map();
+
+function removeShot(id){
+  const i = shots.findIndex(s => s.id === id);
+  if (i > -1){
+    const s = shots[i];
+    try{ s.previewURL && URL.revokeObjectURL(s.previewURL); }catch{}
+    try{ s.imageURL && URL.revokeObjectURL(s.imageURL); }catch{}
+    try{
+      const ve = window._videoEls && window._videoEls.get(s.id);
+      if (ve){ try{ ve.pause(); }catch{} window._videoEls.delete(s.id); }
+    }catch{}
+    shots.splice(i, 1);
+    render();
+  }
+}
+
+async function videoPosterInfo(file, time=0.1){
+  return new Promise((resolve)=>{
+    const url = URL.createObjectURL(file);
+    const v = document.createElement('video');
+    v.preload='metadata'; v.muted=true; v.playsInline=true; v.src=url;
+    v.addEventListener('loadedmetadata', ()=>{
+      const w = v.videoWidth|0, h = v.videoHeight|0;
+      const c=document.createElement('canvas'); c.width=w||320; c.height=h||180;
+      const ctx=c.getContext('2d');
+      const grab = ()=>{ try{ ctx.drawImage(v,0,0,c.width,c.height); resolve({poster:c.toDataURL('image/jpeg',.85), w: w||c.width, h: h||c.height}); }catch{ resolve({poster:'', w, h}); } URL.revokeObjectURL(url); };
+      if(isFinite(v.duration)&&v.duration>0){ v.currentTime=Math.min(time,Math.max(0,v.duration-0.2)); v.addEventListener('seeked',grab,{once:true}); }
+      else { v.addEventListener('loadeddata',grab,{once:true}); }
+    }, {once:true});
+    v.addEventListener('error', ()=>{ URL.revokeObjectURL(url); resolve({poster:'', w:0, h:0}); }, {once:true});
+  });
+}
+
+function setMediaAspect(holder, w, h){
+  if (!holder) return;
+  if (w && h) holder.style.setProperty('--ar', `${w}/${h}`);
+  else holder.style.removeProperty('--ar');
+}
+ // includes {collapsed:boolean}
   let mode = 'list';
   let renderCount = 0;
-  const BATCH_SIZE = Infinity;
+  let pageIndex = parseInt(localStorage.getItem("pageIndex")||"0",10)||0;
+let BATCH_SIZE = Math.max(8, Math.min(200, parseInt(localStorage.getItem("pageBatch")||"24",10)||24));
+window.pager = {
+  enabled: true,
+}
 
   const readAsDataURL = (file)=> new Promise((res, rej)=>{
     const fr = new FileReader(); fr.onerror = rej; fr.onload = ()=> res(fr.result); fr.readAsDataURL(file);
   });
 
   async function downscale(dataUrl, maxW=1280, maxH=1280, q=.85){
-    const img = new Image(); img.decoding='async'; img.src = dataUrl; await img.decode().catch(()=>{});
-    const r = Math.min(1, maxW/img.width, maxH/img.height);
-    const cw = Math.round(img.width*r), ch = Math.round(img.height*r);
-    const c = document.createElement('canvas'); c.width=cw; c.height=ch;
-    const ctx = c.getContext('2d'); ctx.imageSmoothingQuality='high'; ctx.drawImage(img,0,0,cw,ch);
-    return c.toDataURL('image/jpeg', q);
-  }
-
-  function guessFormatFromFilename(name){
+  const img = new Image(); img.decoding='async'; img.src = dataUrl; await img.decode().catch(()=>{});
+  const srcW = img.naturalWidth || img.width || 0;
+  const srcH = img.naturalHeight || img.height || 0;
+  const r = Math.min(1, maxW/srcW, maxH/srcH);
+  const cw = Math.round(srcW*r), ch = Math.round(srcH*r);
+  const c = document.createElement('canvas'); c.width=cw; c.height=ch;
+  const ctx = c.getContext('2d'); ctx.imageSmoothingQuality='high'; ctx.drawImage(img,0,0,cw,ch);
+  return { out: c.toDataURL('image/jpeg', q), w: srcW, h: srcH };
+};
+ 
+function guessFormatFromFilename(name){
     const m = String(name).match(/\.([a-z0-9]+)$/i); if(!m) return 'IMG';
     const ext = m[1].toUpperCase(); return ext==='JPG' ? 'JPEG' : ext;
   }
   function inferFormat(file){
-    if(file && file.type){ const [,ext]=file.type.split('/'); return ext?ext.toUpperCase():guessFormatFromFilename(file.name) }
-    return guessFormatFromFilename(file?.name||'');
+  if(file && file.type){
+    const [,ext] = file.type.split('/');
+    return ext ? ext.toUpperCase() : guessFormatFromFilename(file.name);
   }
+  return guessFormatFromFilename(file?.name||'');
+}
 
   function inferTimecode(name){
     const base = name.replace(/\.[^.]+$/,'');
@@ -905,6 +1076,7 @@ async function chooseFolderAndRelink(options){
     const hh = Math.floor(totalSec/3600), mm=Math.floor((totalSec%3600)/60), ss=totalSec%60;
     return `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}:${String(ff).padStart(2,'0')}`;
   }
+  
 
 // Detect if a WebP is animated by reading RIFF chunks (VP8X flag or ANIM chunk)
 async function isAnimatedWebP(file){
@@ -950,8 +1122,8 @@ async function isAnimatedWebP(file){
   }
 
   function setPageModeButtonsState(){ const on = mode==='page'; collapseAllCardsBtn.disabled=!on; expandAllCardsBtn.disabled=!on; }
-  modeListBtn.addEventListener('click', ()=>{ mode='list'; modeListBtn.classList.add('active'); modePageBtn.classList.remove('active'); listSection.classList.remove('hidden'); pageSection.classList.add('hidden'); setPageModeButtonsState(); render(); });
-  modePageBtn.addEventListener('click', ()=>{ mode='page'; modePageBtn.classList.add('active'); modeListBtn.classList.remove('active'); listSection.classList.add('hidden'); pageSection.classList.remove('hidden'); setPageModeButtonsState(); resetInfinite(); render(); });
+  modeListBtn.addEventListener('click', ()=>{ mode='list'; modeListBtn.classList.add('active'); modePageBtn.classList.remove('active'); listSection.classList.remove('hidden'); pageSection.classList.add('hidden'); if (window.pager&&window.pager.show) window.pager.show(false); setPageModeButtonsState(); render(); });
+  modePageBtn.addEventListener('click', ()=>{ mode='page'; modePageBtn.classList.add('active'); modeListBtn.classList.remove('active'); listSection.classList.add('hidden'); pageSection.classList.remove('hidden'); if (window.pager&&window.pager.show) window.pager.show(true); setPageModeButtonsState(); render(); });
   starFilter.addEventListener('change', ()=>{ resetInfinite(); render(); });
   setPageModeButtonsState();
 
@@ -1042,194 +1214,218 @@ tr.querySelector('.selbox').addEventListener('change',e=> s.selected=e.target.ch
 
   function resetInfinite(){ renderCount = Math.min(BATCH_SIZE, filteredShots().length); }
   window.addEventListener('scroll',()=>{
-    if(mode!=='page') return;
+    if (mode!=='page' || (window.pager && window.pager.enabled)) return;
     const nearBottom = (window.innerHeight + window.scrollY) >= (document.body.offsetHeight - 800);
     if(nearBottom){ renderCount = Math.min(filteredShots().length, renderCount + BATCH_SIZE); renderPage(); }
   });
 
-  function renderPage(){
-    const list = filteredShots(); if(renderCount===0) resetInfinite();
-    pageContainer.innerHTML='';
-    list.slice(0,renderCount).forEach((s,i)=>{
-      const card = cardTpl.content.firstElementChild.cloneNode(true); card.dataset.id=s.id;
-      card.querySelector('.idxbadge').textContent=`#${String(i+1).padStart(3,'0')}`;
-      const starEl=card.querySelector('.star'); starEl.classList.toggle('on',!!s.starred); starEl.textContent=s.starred?'★':'☆';
-      starEl.addEventListener('click',()=>{ s.starred=!s.starred; render(); });
+  
+function renderPage(){
+  const list = filteredShots();
+  pageContainer.innerHTML='';
+  const per = Math.max(1, (typeof BATCH_SIZE!=='undefined' ? (BATCH_SIZE|0) : 24));
+  const pages = Math.max(1, Math.ceil(list.length/per));
+  if (typeof pageIndex==='undefined') window.pageIndex = 0;
+  if (pageIndex >= pages) pageIndex = pages-1;
+  if (pageIndex < 0) pageIndex = 0;
+  const start = pageIndex*per; const end = Math.min(list.length, start+per);
+  if (window.pager && window.pager.show) window.pager.show(true);
+  (window.pager && window.pager.update && window.pager.update());
+  list.slice(start, end).forEach((s,i)=>{
+    const card = cardTpl.content.firstElementChild.cloneNode(true); card.dataset.id=s.id;
+    card.querySelector('.idxbadge').textContent = `#${String(start + i + 1).padStart(3,'0')}`;
+    const starEl=card.querySelector('.star'); starEl.classList.toggle('on',!!s.starred); starEl.textContent=s.starred?'★':'☆';
+    starEl.addEventListener('click',()=>{ s.starred=!s.starred; render(); });
 
-      const titleInput=card.querySelector('.title-input'); titleInput.value=s.title||''; titleInput.addEventListener('input',e=> s.title=e.target.value);
+    const titleInput=card.querySelector('.title-input'); titleInput.value=s.title||''; titleInput.addEventListener('input',e=> s.title=e.target.value);
 
-      const img=card.querySelector('.media-img'); const vid=card.querySelector('.media-vid');
-      const replaceBtn=card.querySelector('.replace'); const replaceInput=card.querySelector('.replaceInput');
-      if(s.mediaType==='video' && s.previewURL){ 
-        vid.classList.remove('hidden'); img.classList.add('hidden'); 
-        // hide canvas/controls if present
-        const holder = img.parentElement;
-        const canvas = holder.querySelector('canvas.webpCanvas'); if(canvas) canvas.classList.add('hidden');
-        const ctrls = holder.querySelector('.webp-controls'); if(ctrls) ctrls.classList.add('hidden');
-        vid.src=s.previewURL; vid.poster=s.thumb||''; 
+    const img=card.querySelector('.media-img'); const vid=card.querySelector('.media-vid');
+    const replaceBtn=card.querySelector('.replace'); const replaceInput=card.querySelector('.replaceInput');
+    const holder = img.parentElement;
+    setMediaAspect(holder, s.w||0, s.h||0);
+
+    if(s.mediaType==='video' && s.previewURL){
+      img.classList.add('hidden');
+      const canvas = holder.querySelector('canvas.webpCanvas'); if(canvas) canvas.classList.add('hidden');
+      const ctrls = holder.querySelector('.webp-controls'); if(ctrls) ctrls.classList.add('hidden');
+
+      const placeholderVid = vid;
+      let cached = window._videoEls.get(s.id);
+      if (!cached){
+        cached = placeholderVid;
+        cached.preload='metadata'; cached.playsInline=true;
+        window._videoEls.set(s.id, cached);
+      } else if (cached !== placeholderVid){
+        placeholderVid.replaceWith(cached);
       }
-      else { 
-        const holder = img.parentElement;
-        let canvas = holder.querySelector('canvas.webpCanvas');
-        let ctrls = holder.querySelector('.webp-controls');
-        if(!canvas){ canvas = document.createElement('canvas'); canvas.className='webpCanvas hidden'; img.after(canvas); }
-        if(!ctrls){
-          ctrls = document.createElement('div'); ctrls.className='webp-controls hidden';
-          ctrls.innerHTML = `
-            <label style="display:flex;align-items:center;gap:.5rem;">
-              <span>Frame</span>
-              <input type="range" min="0" max="0" value="0" step="1" data-act="slider">
-              <span data-act="label">0/0</span>
-            </label>`;
-          canvas.after(ctrls);
-        }
-          const slider = ctrls.querySelector('[data-act=slider]');
-          const label  = ctrls.querySelector('[data-act=label]');
-          const getPlayer = ()=> (window._webpPlayers && window._webpPlayers.get(s.id)) || null;
-          const updateUIFromIndex = (idx)=>{
-            const p = getPlayer();
-            const total = p && p.frames ? p.frames.length : 0;
-            label.textContent = total ? `${idx+1}/${total}` : `${idx+1}`;
-            if (document.activeElement !== slider) slider.value = String(idx);
-            s.webpFrame = idx;
-          };
-          // Wire slider to seek frames
-          slider.oninput = () => {
-            const p = getPlayer(); if (!p) return;
-            const idx = parseInt(slider.value || '0', 10);
-            p.seek(idx, updateUIFromIndex);
-          };
+      cached.classList.remove('hidden');
+      if (!cached.dataset.boundMeta){
+        cached.addEventListener('loadedmetadata', ()=>{
+          if ((!s.w || !s.h) && cached.videoWidth && cached.videoHeight){
+            s.w = cached.videoWidth; s.h = cached.videoHeight; setMediaAspect(holder, s.w, s.h);
+          }
+        }, {once:true});
+        cached.dataset.boundMeta='1';
+      }
+      if (!cached.poster) cached.poster = s.thumb || '';
+      if (!cached.src || cached.src !== s.previewURL){ cached.src = s.previewURL; }
+    } else {
+      let canvas = holder.querySelector('canvas.webpCanvas');
+      let ctrls = holder.querySelector('.webp-controls');
+      if(!canvas){ canvas = document.createElement('canvas'); canvas.className='webpCanvas hidden'; img.after(canvas); }
+      if(!ctrls){
+        ctrls = document.createElement('div'); ctrls.className='webp-controls hidden';
+        ctrls.innerHTML = `
+          <label style="display:flex;align-items:center;gap:.5rem;">
+            <span>Frame</span>
+            <input type="range" min="0" max="0" value="0" step="1" data-act="slider">
+            <span data-act="label">0/0</span>
+          </label>`;
+        canvas.after(ctrls);
+      }
+      const slider = ctrls.querySelector('[data-act=slider]');
+      const label  = ctrls.querySelector('[data-act=label]');
+      const getPlayer = ()=> (window._webpPlayers && window._webpPlayers.get(s.id)) || null;
+      const updateUIFromIndex = (idx)=>{
+        const p = getPlayer();
+        const total = p && p.frames ? p.frames.length : 0;
+        label.textContent = total ? `${idx+1}/${total}` : `${idx+1}`;
+        if (document.activeElement !== slider) slider.value = String(idx);
+        s.webpFrame = idx;
+      };
+      slider.oninput = () => {
+        const p = getPlayer(); if (!p) return;
+        const idx = parseInt(slider.value || '0', 10);
+        p.seek(idx, updateUIFromIndex);
+      };
 
-        
-        if (s.imageURL){
-          // Use canvas + controls
-          img.classList.add('hidden'); vid.classList.add('hidden');
-          canvas.classList.remove('hidden'); ctrls.classList.remove('hidden');
-          // Show placeholder while loading
-          canvas.getContext('2d').fillStyle = '#111';
-          canvas.width = img.naturalWidth||320; canvas.height = img.naturalHeight||180;
-          canvas.getContext('2d').fillRect(0,0,canvas.width,canvas.height);
-          canvas.getContext('2d').fillStyle='#999';
-          canvas.getContext('2d').fillText('Loading WebP…', 10, 20);
-
-          window._webpPlayers = window._webpPlayers || new Map();
+      if (s.imageURL){
+        img.classList.add('hidden'); vid.classList.add('hidden');
+        canvas.classList.remove('hidden'); ctrls.classList.remove('hidden');
+        canvas.getContext('2d').fillStyle = '#111';
+        canvas.width = (s.w||320); canvas.height = (s.h||180);
+        canvas.getContext('2d').fillRect(0,0,canvas.width,canvas.height);
+        canvas.getContext('2d').fillStyle='#999'; canvas.getContext('2d').fillText('Loading WebP…', 10, 20);
+        window._webpPlayers = window._webpPlayers || new Map();
+        const ensureLoaded = async ()=>{
+          if (typeof WebPPlayer === 'undefined'){
+            const startTs = Date.now();
+            const poll = ()=>{
+              if (typeof WebPPlayer !== 'undefined'){ ensureLoaded(); return; }
+              if (Date.now() - startTs > 5000){ console.warn('WebPPlayer not available'); return; }
+              setTimeout(poll, 50);
+            };
+            poll(); return;
+          }
           let player = window._webpPlayers.get(s.id);
-          const ensureLoaded = async ()=>{
-            if (typeof WebPPlayer === 'undefined'){
-              const startTs = Date.now();
-              const poll = ()=>{
-                if (typeof WebPPlayer !== 'undefined'){ ensureLoaded(); return; }
-                if (Date.now() - startTs > 5000){ console.warn('WebPPlayer not available'); return; }
-                setTimeout(poll, 50);
-              };
-              poll(); return;
-            }
-            window._webpPlayers = window._webpPlayers || new Map();
-            let player = window._webpPlayers.get(s.id);
-            if (player && player.url !== s.imageURL){
-              try{ player.dispose(); }catch{};
-              window._webpPlayers.delete(s.id);
-              player = null;
-            }
-            if(!player){
-              player = new WebPPlayer(canvas, s.imageURL);
-              window._webpPlayers.set(s.id, player);
-              try{ await player.load(); }catch(e){ console.warn('WebP load failed', e); }
-            }
-            if (player.canvas !== canvas) player.rebindCanvas(canvas);
-            const total = player.frames.length;
-            s.webpTotalFrames = total || 0;
-            slider.max = String(Math.max(0, total-1));
-            const startIdx = Number.isInteger(s.webpFrame) ? (s.webpFrame|0) : (player.index|0);
-            player.seek(startIdx, updateUIFromIndex);
-    };
-          ensureLoaded();
-          
-          // Store cleanup hook on holder for when navigating away
-          holder._disposeWebP = ()=>{ try{ const p=(window._webpPlayers&&window._webpPlayers.get(s.id))||null; if(p && p.pause) p.pause(); }catch{}; /* keep cached frames */ };
-        }else{
-          // Fallback to static poster behavior
-          if (holder._disposeWebP){ try{ holder._disposeWebP(); }catch{}; holder._disposeWebP=null; }
-          canvas.classList.add('hidden'); ctrls.classList.add('hidden');
-          img.classList.remove('hidden'); vid.classList.add('hidden');
-          img.src = s.thumb || '';
-        }
+          if (player && player.url !== s.imageURL){
+            try{ player.dispose(); }catch{};
+            window._webpPlayers.delete(s.id);
+            player = null;
+          }
+          if(!player){
+            player = new WebPPlayer(canvas, s.imageURL);
+            window._webpPlayers.set(s.id, player);
+            try{ await player.load(); }catch(e){ console.warn('WebP load failed', e); }
+          }
+          if (player.canvas !== canvas) player.rebindCanvas(canvas);
+          const total = player.frames.length;
+          s.webpTotalFrames = total || 0;
+          slider.max = String(Math.max(0, total-1));
+          const startIdx = Number.isInteger(s.webpFrame) ? (s.webpFrame|0) : (player.index|0);
+          player.seek(startIdx, updateUIFromIndex);
+          if (player.size && player.size.w && player.size.h){
+            s.w = s.w || player.size.w;
+            s.h = s.h || player.size.h;
+            setMediaAspect(holder, s.w, s.h);
+          }
+        };
+        ensureLoaded();
+        holder._disposeWebP = ()=>{ try{ const p=(window._webpPlayers&&window._webpPlayers.get(s.id))||null; if(p && p.pause) p.pause(); }catch{}; };
+      } else {
+        if (holder._disposeWebP){ try{ holder._disposeWebP(); }catch{}; holder._disposeWebP=null; }
+        canvas.classList.add('hidden'); ctrls.classList.add('hidden');
+        img.classList.remove('hidden'); vid.classList.add('hidden');
+        img.onload = ()=>{
+          if ((!s.w || !s.h) && img.naturalWidth && img.naturalHeight){ s.w = img.naturalWidth; s.h = img.naturalHeight; setMediaAspect(holder, s.w, s.h); }
+        };
+        img.src = s.thumb || '';
       }
-      replaceBtn.addEventListener('click',()=> replaceInput.click());
-      replaceInput.addEventListener('change',async (e)=>{ const f=e.target.files[0]; if(!f) return; await replaceMedia(s,f); render(); });
+    }
 
-      const toggleBtn=card.querySelector('.toggleFields');
-      if(s.collapsed) card.classList.add('fields-collapsed'); else card.classList.remove('fields-collapsed');
-      toggleBtn.addEventListener('click',(e)=>{
-        const multi = e.altKey||e.metaKey||e.ctrlKey;
-        if(multi){ const ns=!s.collapsed; shots.forEach(x=> x.collapsed=ns); }
-        else s.collapsed=!s.collapsed;
-        render();
-      });
+    replaceBtn.addEventListener('click',()=> replaceInput.click());
+    replaceInput.addEventListener('change',async (e)=>{ const f=e.target.files[0]; if(!f) return; await replaceMedia(s,f); render(); });
 
-      card.querySelector('.starttc').value=s.startTC||'';
-      card.querySelector('.endtc').value=s.endTC||'';
-      card.querySelector('.take').value=s.take||'';
-      card.querySelector('.camera').value=s.camera||'';
-      card.querySelector('.lens').value=s.lens||'';
-      card.querySelector('.desc').value=s.desc||'';
-      card.querySelector('.filename').textContent=s.filename;
-      card.querySelector('.kind').textContent=s.format||guessFormatFromFilename(s.filename);
-
-      ['starttc','endtc','take','camera','lens','desc'].forEach(cls=>{
-        card.querySelector('.'+cls).addEventListener('input',e=> s[cls==='starttc'?'startTC':cls==='endtc'?'endTC':cls]=e.target.value);
-      });
-
-      const dragHandle = card.querySelector('.drag-handle');
-card.setAttribute('draggable','false');
-if (dragHandle) dragHandle.setAttribute('draggable','true');
-if (dragHandle) dragHandle.addEventListener('dragstart',(e)=>{
-  e.stopPropagation();
-  card.classList.add('dragging');
-  e.dataTransfer.setData('text/plain', s.id);
-  e.dataTransfer.effectAllowed = 'move';
-  const box = ensureDropBox();
-  box.style.display = 'block';
-});
-if (dragHandle) dragHandle.addEventListener('dragend',(e)=>{
-  e.stopPropagation();
-  card.classList.remove('dragging');
-  const box = ensureDropBox();
-  box.style.display = 'none';
-});
-// Prevent dragging from anywhere except the handle
-card.addEventListener('dragstart', (e)=>{ e.preventDefault(); });
-// Make sure the WebP frame slider never bubbles into a drag
-const webpSliderEl = card.querySelector('.webp-controls input[type=range]');
-if (webpSliderEl){
-  ['mousedown','pointerdown','touchstart','dragstart'].forEach(ev=>
-    webpSliderEl.addEventListener(ev, evObj => evObj.stopPropagation())
-  );
-}
-// Position the drop-follow box over the card under the cursor
-card.addEventListener('dragover',(e)=>{
-  e.preventDefault();
-  const box = ensureDropBox();
-  const r = card.getBoundingClientRect();
-  box.style.left = (window.scrollX + r.left) + 'px';
-  box.style.top  = (window.scrollY + r.top) + 'px';
-  box.style.width  = r.width + 'px';
-  box.style.height = r.height + 'px';
-  box.style.display = 'block';
-});
-card.addEventListener('dragleave',()=>{
-  const box = ensureDropBox();
-  box.style.display = 'none';
-});
-card.addEventListener('drop',(e)=>{ e.preventDefault(); card.classList.remove('ghost'); reorderById(e.dataTransfer.getData('text/plain'), s.id); });
-
-
-  card.querySelector('.del').addEventListener('click',()=> removeShot(s.id));
-      pageContainer.appendChild(card);
+    const toggleBtn=card.querySelector('.toggleFields');
+    if(s.collapsed) card.classList.add('fields-collapsed'); else card.classList.remove('fields-collapsed');
+    toggleBtn.addEventListener('click',(e)=>{
+      const multi = e.altKey||e.metaKey||e.ctrlKey;
+      if(multi){ const ns=!s.collapsed; shots.forEach(x=> x.collapsed=ns); }
+      else s.collapsed=!s.collapsed;
+      render();
     });
-  }
 
-  function reorderById(srcId,destId){
+    card.querySelector('.starttc').value=s.startTC||'';
+    card.querySelector('.endtc').value=s.endTC||'';
+    card.querySelector('.take').value=s.take||'';
+    card.querySelector('.camera').value=s.camera||'';
+    card.querySelector('.lens').value=s.lens||'';
+    card.querySelector('.desc').value=s.desc||'';
+    card.querySelector('.filename').textContent=s.filename;
+    const kindEl = card.querySelector('.kind');
+    kindEl.textContent=s.format||guessFormatFromFilename(s.filename);
+    if (s.w && s.h){
+      const chip = document.createElement('span');
+      const gcd = (a,b)=> b?gcd(b,a%b):a;
+      const g = gcd(s.w, s.h) || 1;
+      chip.className='chip mini';
+      chip.textContent = `${s.w}×${s.h} (${s.w/g}:${s.h/g})`;
+      kindEl.after(chip);
+    }
+
+    const dragHandle = card.querySelector('.drag-handle');
+    card.setAttribute('draggable','false');
+    if (dragHandle) dragHandle.setAttribute('draggable','true');
+    if (dragHandle) dragHandle.addEventListener('dragstart',(e)=>{
+      e.stopPropagation();
+      card.classList.add('dragging');
+      e.dataTransfer.setData('text/plain', s.id);
+      e.dataTransfer.effectAllowed='move';
+      const box = ensureDropBox(); box.style.display='block';
+    });
+    if (dragHandle) dragHandle.addEventListener('dragend',(e)=>{
+      e.stopPropagation();
+      card.classList.remove('dragging');
+      const box = ensureDropBox(); box.style.display='none';
+    });
+    card.addEventListener('dragstart', (e)=>{ e.preventDefault(); });
+
+    const webpSliderEl = card.querySelector('.webp-controls input[type=range]');
+    if (webpSliderEl){
+      ['mousedown','pointerdown','touchstart','dragstart'].forEach(ev=>
+        webpSliderEl.addEventListener(ev, evObj => evObj.stopPropagation())
+      );
+    }
+    card.addEventListener('dragover',(e)=>{
+      e.preventDefault();
+      const box = ensureDropBox();
+      const r = card.getBoundingClientRect();
+      box.style.left = (window.scrollX + r.left) + 'px';
+      box.style.top  = (window.scrollY + r.top) + 'px';
+      box.style.width  = r.width + 'px';
+      box.style.height = r.height + 'px';
+      box.style.display = 'block';
+    });
+    card.addEventListener('dragleave',()=>{
+      const box = ensureDropBox(); box.style.display = 'none';
+    });
+    card.addEventListener('drop',(e)=>{ e.preventDefault(); card.classList.remove('ghost'); reorderById(e.dataTransfer.getData('text/plain'), s.id); });
+
+    card.querySelector('.del').addEventListener('click',()=> removeShot(s.id));
+
+    pageContainer.appendChild(card);
+  });
+}function reorderById(srcId,destId){
     if(!srcId||srcId===destId) return;
     const from=shots.findIndex(x=>x.id===srcId), to=shots.findIndex(x=>x.id===destId);
     if(from<0||to<0) return; const [moved]=shots.splice(from,1); shots.splice(to,0,moved); render();
@@ -1247,57 +1443,39 @@ card.addEventListener('drop',(e)=>{ e.preventDefault(); card.classList.remove('g
     if(f.type.startsWith('image/')){
       if (f.type === 'image/webp'){
         const [dataUrl, anim] = await Promise.all([readAsDataURL(f), isAnimatedWebP(f)]);
-        const thumb = await downscale(dataUrl,1600,1600,.85);
+        const d = await downscale(dataUrl,1600,1600,.85);
         const url = URL.createObjectURL(f);
         shots.push({
           id: crypto.randomUUID(),
           filename: f.name,
           format: inferFormat(f),
           mediaType: 'image',
-          thumb,
+          thumb: d.out,
           imageURL: url,
           isAnimated: !!anim,
-          webpFrame: 0,
-          webpTotalFrames: 0,
-          title: '',
-          startTC: '',
-          endTC: '',
-          desc: '',
-          camera: '',
-          lens: '',
-          take: '',
-          notes: '',
-          selected: false,
-          starred: false,
-          collapsed: true
+          webpFrame: 0, webpTotalFrames: 0,
+          w: d.w || 0, h: d.h || 0,
+          title: '', startTC: '', endTC: '', desc: '', camera: '', lens: '', take: '', notes: '',
+          selected: false, starred: false, collapsed: true
         });
-      }else{
+      } else {
         const dataUrl = await readAsDataURL(f);
-        const thumb  = await downscale(dataUrl,1600,1600,.85);
+        const d = await downscale(dataUrl,1600,1600,.85);
         shots.push({
           id: crypto.randomUUID(),
           filename: f.name,
           format: inferFormat(f),
           mediaType: 'image',
-          thumb,
+          thumb: d.out,
           isAnimated: false,
-          webpFrame: 0,
-          webpTotalFrames: 0,
-          title: '',
-          startTC: '',
-          endTC: '',
-          desc: '',
-          camera: '',
-          lens: '',
-          take: '',
-          notes: '',
-          selected: false,
-          starred: false,
-          collapsed: true
+          webpFrame: 0, webpTotalFrames: 0,
+          w: d.w || 0, h: d.h || 0,
+          title: '', startTC: '', endTC: '', desc: '', camera: '', lens: '', take: '', notes: '',
+          selected: false, starred: false, collapsed: true
         });
       }
-    }else{
-      const poster = await videoPoster(f) || '';
+    } else {
+      const info = await videoPosterInfo(f);
       const url = URL.createObjectURL(f);
       shots.push({
         id: crypto.randomUUID(),
@@ -1306,27 +1484,17 @@ card.addEventListener('drop',(e)=>{ e.preventDefault(); card.classList.remove('g
         mediaType: 'video',
         sourceHint: { name: f.name || '', size: (f.size||0), lastModified: (f.lastModified||0), type: f.type || '' },
         previewURL: url,
-        thumb: poster,
-        webpFrame: 0,
-        webpTotalFrames: 0,
-        title: '',
-        startTC: '',
-        endTC: '',
-        desc: '',
-        camera: '',
-        lens: '',
-        take: '',
-        notes: '',
-        selected: false,
-        starred: false,
-        collapsed: true
+        thumb: info.poster || '',
+        w: info.w || 0, h: info.h || 0,
+        webpFrame: 0, webpTotalFrames: 0,
+        title: '', startTC: '', endTC: '', desc: '', camera: '', lens: '', take: '', notes: '',
+        selected: false, starred: false, collapsed: true
       });
     }
   }
-  
 }
 
-  async function replaceMedia(shot,file){
+async function replaceMedia(shot,file){
   if(!file || !(file.type && (file.type.startsWith('image/')||file.type.startsWith('video/')))) return;
   if(shot.mediaType==='video' && shot.previewURL) try{ URL.revokeObjectURL(shot.previewURL);}catch{}
   if(shot.imageURL) { try{ URL.revokeObjectURL(shot.imageURL); }catch{} }
@@ -1334,22 +1502,24 @@ card.addEventListener('drop',(e)=>{ e.preventDefault(); card.classList.remove('g
   if(file.type.startsWith('image/')){
     if (file.type === 'image/webp'){
       const [dataUrl, anim] = await Promise.all([readAsDataURL(file), isAnimatedWebP(file)]);
-      const thumb=await downscale(dataUrl,1600,1600,.85);
-      shot.mediaType='image'; shot.thumb=thumb; delete shot.previewURL;
+      const d = await downscale(dataUrl,1600,1600,.85);
+      shot.mediaType='image'; shot.thumb=d.out; delete shot.previewURL;
       shot.isAnimated=!!anim;
       shot.imageURL = URL.createObjectURL(file);
-      shot.webpFrame = 0;
-      shot.webpTotalFrames = 0;
-    }else{
-      const dataUrl=await readAsDataURL(file); const thumb=await downscale(dataUrl,1600,1600,.85);
-      shot.mediaType='image'; shot.thumb=thumb; delete shot.previewURL; shot.isAnimated=false;
       shot.webpFrame = 0; shot.webpTotalFrames = 0;
-      if(shot.imageURL){ try{ URL.revokeObjectURL(shot.imageURL);}catch{} } delete shot.imageURL;
+      shot.w = d.w||0; shot.h = d.h||0;
+    }else{
+      const dataUrl=await readAsDataURL(file); const d=await downscale(dataUrl,1600,1600,.85);
+      shot.mediaType='image'; shot.thumb=d.out; delete shot.previewURL; shot.isAnimated=false;
+      shot.webpFrame = 0; shot.webpTotalFrames = 0; if(shot.imageURL){ try{ URL.revokeObjectURL(shot.imageURL);}catch{} } delete shot.imageURL;
+      shot.w = d.w||0; shot.h = d.h||0;
     }
   }else{
-    const poster=await videoPoster(file)||''; shot.mediaType='video'; shot.previewURL=URL.createObjectURL(file); shot.thumb=poster; shot.isAnimated=false; shot.webpFrame=0; shot.webpTotalFrames=0;
-    shot.sourceHint = { name: file.name || '', size: (file.size||0), lastModified: (file.lastModified||0), type: file.type || '' }; shot.webpFrame=0; shot.webpTotalFrames=0;
+    const poster=await videoPoster(file)||''; 
+    shot.mediaType='video'; shot.previewURL=URL.createObjectURL(file); shot.thumb=poster; shot.isAnimated=false; shot.webpFrame=0; shot.webpTotalFrames=0;
+    shot.sourceHint = { name: file.name || '', size: (file.size||0), lastModified: (file.lastModified||0), type: file.type || '' };
     if(shot.imageURL){ try{ URL.revokeObjectURL(shot.imageURL);}catch{} } delete shot.imageURL;
+    shot.w = 0; shot.h = 0; // will be filled on metadata
   }
 }
 
@@ -1460,79 +1630,6 @@ importJSONInput.addEventListener('change', async (e)=>{
   importJSONInput.value='';
 });
 
-<!-- Templates adapter for Shot List Maker -->
-(function(){
-  function applyShotTemplate(tpl){
-    try{
-      const defaults = tpl && (tpl.defaults || tpl.default) || {};
-      const selected = (Array.isArray(window.shots) ? window.shots.filter(s=>s.selected) : []);
-      const target = selected.length ? selected : (window.shots || []);
-      if (defaults && typeof defaults === 'object'){
-        target.forEach(s=>{
-          if(defaults.titlePrefix && !s.title) s.title = defaults.titlePrefix;
-          if(defaults.camera != null) s.camera = defaults.camera;
-          if(defaults.lens   != null) s.lens   = defaults.lens;
-          if(defaults.take   != null) s.take   = defaults.take;
-          if(defaults.notes  != null) s.notes  = defaults.notes;
-          if(defaults.starred!= null) s.starred= !!defaults.starred;
-        });
-      }
-      if (Array.isArray(tpl && tpl.shots) && tpl.shots.length){
-        const mode = tpl.mode || 'apply';
-        if (mode === 'replace'){
-          window.shots = tpl.shots.map((r,i)=> {
-            const base = {
-          sourceHint: r.sourceHint || { name: r.filename || '', size: r.size || 0, lastModified: r.lastModified || 0, type: r.type || '' }, 
-            id: crypto.randomUUID(),
-            filename: r.filename || '',
-            format: r.format || (typeof guessFormatFromFilename==='function' && r.filename ? guessFormatFromFilename(r.filename) : ''),
-            mediaType: r.mediaType || 'image',
-            thumb: r.thumb || '',
-            imageURL: r.imageURL || '',
-            previewURL: r.previewURL || '',
-            isAnimated: !!r.isAnimated,
-            webpFrame: Number.isInteger(r.webpFrame) ? r.webpFrame : 0,
-            webpTotalFrames: Number.isInteger(r.webpTotalFrames) ? r.webpTotalFrames : 0,
-            title: r.title || '',
-            startTC: r.startTC || '',
-            endTC: r.endTC || '',
-            desc: r.desc || '',
-            camera: (r.camera != null ? r.camera : (defaults.camera || '')),
-            lens:   (r.lens   != null ? r.lens   : (defaults.lens   || '')),
-            take:   (r.take   != null ? r.take   : (defaults.take   || '')),
-            notes:  (r.notes  != null ? r.notes  : (defaults.notes  || '')),
-            selected:false,
-            starred: (r.starred != null ? !!r.starred : !!defaults.starred),
-            collapsed:true
-           };
-            if (base.mediaType==='image' && r.imageData && !base.imageURL){
-              const b = dataURLtoBlob(r.imageData);
-              if (b){ try{ base.imageURL = URL.createObjectURL(b); base.isAnimated = true; if(!base.format) base.format='WEBP'; }catch{} }
-            }
-            return base;
-          });
-        } else {
-          for (let i=0;i<tpl.shots.length;i++){
-            const r = tpl.shots[i], s = target[i]; if(!s) break;
-            if(r.title   != null) s.title   = r.title;
-            if(r.startTC != null) s.startTC = r.startTC;
-            if(r.endTC   != null) s.endTC   = r.endTC;
-            if(r.desc    != null) s.desc    = r.desc;
-            if(r.camera  != null) s.camera  = r.camera;
-            if(r.lens    != null) s.lens    = r.lens;
-            if(r.take    != null) s.take    = r.take;
-            if(r.notes   != null) s.notes   = r.notes;
-            if(r.starred != null) s.starred = !!r.starred;
-          }
-        }
-      }
-      if (typeof window.resetInfinite === 'function') window.resetInfinite();
-      if (typeof window.render === 'function') window.render();
-    }catch(err){
-      console.warn('applyShotTemplate failed:', err);
-      alert('Failed to apply template: ' + (err && err.message ? err.message : err));
-    }
-  }
   window.loadBoardData = function(data){
     try{
       if (data && data.meta && data.meta.app === 'shotlist-maker' && Array.isArray(data.shots)){
@@ -1558,15 +1655,12 @@ importJSONInput.addEventListener('change', async (e)=>{
         });
 if (typeof window.resetInfinite === 'function') window.resetInfinite();
         if (typeof window.render === 'function') window.render();
-      } else {
-        applyShotTemplate(data || {});
-      }
+      } else { if (typeof applyShotTemplate === 'function') applyShotTemplate(data || {}); else console.warn('No template handler.'); }
     }catch(e){
       console.warn('loadBoardData failed:', e);
       alert('Failed to load template: ' + (e && e.message ? e.message : e));
     }
   };
-})();
 
 async function gatherFilesFromDirHandle(dirHandle){
   const files = [];
@@ -1673,475 +1767,415 @@ async function chooseFolderAndRelink(options){
   await relinkFromFileList(files, onlyMissing);
 }
 
+
+
+// --- Memory Tools ---
+function memUpdateStats(){
+  try{
+    const total = shots.length;
+    let imgURLs = 0, vidURLs = 0;
+    for(const s of shots){
+      if (s.imageURL) imgURLs++;
+      if (s.previewURL) vidURLs++;
+    }
+    const vcache = (window._videoEls && window._videoEls.size) || 0;
+    const wcache = (window._webpPlayers && window._webpPlayers.size) || 0;
+    const el = document.getElementById('memStats');
+    if (el) el.textContent = `${total} items · ${imgURLs} img URLs · ${vidURLs} vid URLs · ${vcache} video nodes · ${wcache} webp players`;
+  }catch{}
+}
+function memFreeCache(){
+  // Pause & drop cached video elements
+  if (window._videoEls){
+    for (const [id, v] of window._videoEls){
+      try{ v.pause(); v.removeAttribute('src'); v.load?.(); }catch{}
+    }
+    window._videoEls.clear();
+  }
+  // Dispose WebP players
+  if (window._webpPlayers){
+    for (const [id, p] of window._webpPlayers){
+      try{ p.dispose?.(); }catch{}
+    }
+    window._webpPlayers.clear();
+  }
+  memUpdateStats();
+  alert('Freed cached video elements and WebP decoders.');
+}
+function memReleaseURLs(keepN){
+  keepN = Math.max(0, parseInt(keepN)||0);
+  const list = (typeof filteredShots==='function' ? filteredShots() : shots).slice(0, keepN);
+  const keep = new Set(list.map(s=> s.id));
+  let img=0, vid=0;
+  for (const s of shots){
+    if (!keep.has(s.id)){
+      if (s.previewURL){ try{ URL.revokeObjectURL(s.previewURL); }catch{}; s.previewURL=''; vid++; }
+      if (s.imageURL){ try{ URL.revokeObjectURL(s.imageURL); }catch{}; s.imageURL=''; img++; }
+    }
+  }
+  memFreeCache(); // also drop caches bound to released URLs
+  memUpdateStats();
+  alert(`Released ${img} image URLs and ${vid} video URLs (kept first ${keepN}).`);
+}
+function memStripOriginals(keepN){
+  keepN = Math.max(0, parseInt(keepN)||0);
+  const list = (typeof filteredShots==='function' ? filteredShots() : shots).slice(0, keepN);
+  const keep = new Set(list.map(s=> s.id));
+  let img=0, vid=0;
+  for (const s of shots){
+    if (!keep.has(s.id)){
+      if (s.mediaType==='image' && s.imageURL){ try{ URL.revokeObjectURL(s.imageURL); }catch{}; delete s.imageURL; img++; }
+      if (s.mediaType==='video'){
+        if (s.previewURL){ try{ URL.revokeObjectURL(s.previewURL); }catch{}; s.previewURL=''; vid++; }
+      }
+    }
+  }
+  memFreeCache();
+  memUpdateStats();
+  render();
+  alert(`Stripped originals for images and videos beyond first ${keepN}.`);
+}
+(function(){
+  const keepNInput = document.getElementById('memKeepN');
+  const purgeBtn = document.getElementById('memPurgeCache');
+  const relBtn = document.getElementById('memReleaseURLs');
+  const stripBtn = document.getElementById('memStripOriginals');
+  const pageBatchInput = document.getElementById('pageBatchSize');
+  const pageBatchBtn = document.getElementById('applyPageBatch');
+  if (pageBatchInput){ pageBatchInput.value = String(Math.max(8, Math.min(200, parseInt(localStorage.getItem('pageBatch')||'24',10)||24))); }
+  function valKeep(){ return keepNInput ? parseInt(keepNInput.value||'0',10) : 0; }
+  if (purgeBtn) purgeBtn.addEventListener('click', ()=> memFreeCache());
+  if (relBtn) relBtn.addEventListener('click', ()=> memReleaseURLs(valKeep()));
+  if (stripBtn) stripBtn.addEventListener('click', ()=>{ if(confirm('This will remove original media URLs beyond the kept items. Continue?')) memStripOriginals(valKeep()); });
+  if (pageBatchBtn) pageBatchBtn.addEventListener('click', ()=>{
+    const v = Math.max(8, Math.min(200, parseInt(pageBatchInput.value||'24',10)||24));
+    localStorage.setItem('pageBatch', String(v));
+    if (typeof BATCH_SIZE !== 'undefined'){ BATCH_SIZE = v; }
+    if (typeof resetInfinite === 'function') resetInfinite();
+    if (typeof render === 'function') render();
+  });
+  // Update stats initially and after major actions
+  document.addEventListener('DOMContentLoaded', memUpdateStats);
+  const origRender = window.render;
+  window.render = function(){ try{ origRender.apply(this, arguments); }catch(e){ (origRender||function(){})(); } memUpdateStats(); };
+})();
 
 </script>
 
 
-<!-- === Templates Modal (scoped) === -->
-<style id="tplModalStyles">
-  #tplOverlay{ position:fixed; inset:0; background:rgba(0,0,0,.55);
-    backdrop-filter: blur(8px) saturate(140%); -webkit-backdrop-filter: blur(8px) saturate(140%);
-    display:none; z-index:9999; }
-  #tplOverlay.show{ display:block; }
-  #tplOverlay .tpl-modal{ position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
-    width:min(1200px, 92vw); height:min(720px, 88vh);
-    background:var(--panel); color:var(--text);
-    border:1px solid rgba(255,255,255,.14); border-radius:16px; box-shadow:0 22px 60px rgba(0,0,0,.55);
-    display:grid; grid-template-rows:auto 1fr; }
-  #tplOverlay .tpl-header{ display:flex; gap:10px; align-items:center; padding:12px 14px; border-bottom:1px solid rgba(255,255,255,.12); }
-  #tplSearch{ flex:1; height:40px; border-radius:12px; border:1px solid rgba(255,255,255,.18);
-    background:rgba(255,255,255,.06); color:var(--text); padding:0 12px; outline:none; }
-  #tplClose{ border-radius:10px; border:1px solid rgba(255,255,255,.18); background:rgba(255,255,255,.08);
-    color:var(--text); padding:8px 12px; cursor:pointer; }
-  #tplOverlay .tpl-body{ display:grid; grid-template-columns:260px 1fr; min-height:0; }
-  #tplTreePane{ border-right:1px solid rgba(255,255,255,.10); padding:10px; overflow:auto; }
-  .tpl-tree .folder-row{ display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:8px; cursor:pointer; user-select:none; }
-  .tpl-tree .folder-row:hover{ background:rgba(255,255,255,.06); }
-  .tpl-tree .folder-row.active{ outline:2px solid var(--accent); outline-offset:2px; background:rgba(255,255,255,.08); }
-  .tpl-tree .caret{ display:inline-block; width:14px; text-align:center; opacity:.9; transform:rotate(0deg); transition:transform .15s ease; }
-  .tpl-tree .is-open>.folder-row .caret{ transform:rotate(90deg); }
-  .tpl-tree .count{ margin-left:auto; opacity:.8; font-size:12px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.16);
-    padding:2px 8px; border-radius:999px; }
-  .tpl-tree ul{ margin:0; padding-left:16px; list-style:none; } .tpl-tree li{ margin:2px 0; } .tpl-tree .recent-icon{ font-size:12px; opacity:.8; }
-  #tplGridPane{ padding:10px; overflow:auto; }
-  #tplGrid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap:12px; }
-  .tpl-card{ display:grid; grid-template-rows:auto 1fr auto; gap:8px; background:rgba(255,255,255,.06);
-    border:1px solid rgba(255,255,255,.10); border-radius:14px; padding:10px; }
-  .tpl-thumb{ height:140px; border-radius:10px; background:rgba(0,0,0,.4); display:grid; place-items:center; overflow:hidden; }
-  .tpl-thumb img{ width:100%; height:100%; object-fit:cover; display:block; }
-  .tpl-name{ font-weight:700; } .tpl-meta{ font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .tpl-actions{ display:flex; gap:8px; }
-  .tpl-btn{ flex:1 1 0; padding:8px 10px; border-radius:10px; border:1px solid rgba(255,255,255,.18); background:rgba(255,255,255,.08); color:var(--text); cursor:pointer; }
-  .tpl-btn:hover{ filter:brightness(1.08); }
-  @media (max-width:780px){ #tplOverlay .tpl-body{ grid-template-columns: 1fr; } #tplTreePane{ display:none; } }
-</style>
-
-<div id="tplOverlay" aria-hidden="true">
-  <div class="tpl-modal" role="dialog" aria-modal="true">
-    <div class="tpl-header">
-      <input id="tplSearch" type="search" placeholder="Search templates…"/>
-      <button id="tplClose">Close</button>
-    </div>
-    <div class="tpl-body">
-      <aside id="tplTreePane"><div class="tpl-tree" id="tplTree" aria-label="Folders"></div></aside>
-      <section id="tplGridPane"><div id="tplGrid"></div></section>
-    </div>
-  </div>
-</div>
-
-<script id="tplModalScript">
-(()=>{
-  const $ = (s, r=document)=>r.querySelector(s);
-  const grid = $('#tplGrid'), treeEl = $('#tplTree'), searchEl = $('#tplSearch'), overlay = $('#tplOverlay');
-  function openModal(){ overlay.classList.add('show'); searchEl && searchEl.focus(); }
-  function closeModal(){ overlay.classList.remove('show'); }
-  $('#tplClose')?.addEventListener('click', closeModal);
-  overlay?.addEventListener('click', (e)=>{ if(e.target===overlay) closeModal(); });
-  document.getElementById('btnTemplates')?.addEventListener('click', openModal);
-
-  const MANIFEST_URLS = ['templates.json','templates/templates.json','boards.json'];
-  function resolveTemplateURL(file){if(/^https?:\/\//i.test(file)) return file;const repo = detectGhRepo();if(repo) return file;const GH_REPO = window.TPL_GH_REPO||null; const GH_BRANCH = window.TPL_GH_BRANCH||'main';if(GH_REPO){ const clean=String(file).replace(/^\.?\//,'');return `https://raw.githubusercontent.com/${GH_REPO}/${GH_BRANCH}/${clean}`;}return file;}async function fetchJSON(url){ const res = await fetch(url, {cache:'no-store'}); if(!res.ok) throw new Error('HTTP '+res.status+' for '+url); return res.json(); }
-  function detectGhRepo(){ try{ if(!location.hostname.endsWith('github.io')) return null;
-    const owner = location.hostname.split('.')[0]; const repo = location.pathname.replace(/^\/+/, '').split('/')[0] || null; return (owner && repo) ? {owner, repo} : null; }catch(_){ return null; } }
-  async function scanGithub(branch){
-    const repo = detectGhRepo(); if(!repo) throw new Error('Not GitHub Pages');
-    const {owner, repo:reponame} = repo;
-    const api = `https://api.github.com/repos/${owner}/${reponame}/git/trees/${branch}?recursive=1`;
-    const res = await fetch(api, {headers:{'Accept':'application/vnd.github+json'}, cache:'no-store'});
-    if(!res.ok) throw new Error('GitHub API '+res.status);
-    const data = await res.json();
-    return (data.tree||[]).filter(n => n.type==='blob' && /^templates\/.+\.json$/i.test(n.path)).map(n=>{
-      const file = n.path, parts = file.split('/'), base = parts.pop().replace(/\.json$/i,''), folder= parts.slice(1).join('/');
-      const name = base.replace(/[-_]/g,' ').replace(/\s+/g,' ').trim(); const thumbnail = file.replace(/\.json$/i,'.png');
-      return { name, file, folder, thumbnail };
-    });
-  }
-  async function listTemplates(){
-    try{ return await scanGithub('main'); }catch(_){}
-    try{ return await scanGithub('master'); }catch(_){}
-    for(const u of MANIFEST_URLS){
-      try{
-        const arr = await fetchJSON(u);
-        if (Array.isArray(arr) && arr.length){
-          return arr.filter(t => (t.file||'').endsWith('.json')).map(t=>{const file = t.file;const folder = (t.folder||t.dir||file.split('/').slice(1,-1).join('/')).replace(/^templates\/?/,'');const name = t.name || file.split('/').pop().replace(/\.json$/,'');const thumbnail = t.thumbnail || file.replace(/\.json$/i,'.png');return { ...t, name, file, folder, thumbnail, url: resolveTemplateURL(file) };});
-        }
-      }catch(_){}
-    }
-    return [];
-  }
-
-  let allTemplates = [], selected = ''; const expanded = new Set(['']); const RECENT_KEY = 'tpl_recent_v1';
-  function rememberRecent(file){ try{ const now = Date.now();
-    const r = JSON.parse(localStorage.getItem(RECENT_KEY)||'[]').filter(x => x.file !== file);
-    r.unshift({file, ts: now}); localStorage.setItem(RECENT_KEY, JSON.stringify(r.slice(0,30))); }catch(_){ } }
-  function getRecent(){ try{ const r = JSON.parse(localStorage.getItem(RECENT_KEY)||'[]'); const files = new Set(r.map(x=>x.file));
-    return allTemplates.filter(t=>files.has(t.file)); }catch(_){ return []; } }
-  function getFolderPath(t){ const p = (t.folder||'').trim(); return p.replace(/^\.?\/*/,'').replace(/^templates\/?/,''); }
-  function buildTree(list){ const root = {name:'All templates', path:'', children:new Map(), count:0};
-    for(const t of list){ const parts = getFolderPath(t).split('/').filter(Boolean); let node = root; node.count++; let cur='';
-      for(const part of parts){ cur = cur ? `${cur}/${part}` : part; if(!node.children.has(part)) node.children.set(part, {name:part, path:cur, children:new Map(), count:0}); node = node.children.get(part); node.count++; } }
-    return root; }
-  function renderTree(){
-    const root = buildTree(allTemplates); treeEl.innerHTML = '';
-    const recent = getRecent();
-    if (recent.length){ const r = document.createElement('div'); r.className = 'folder-row' + (selected==='__recent__' ? ' active':'');
-      r.dataset.path='__recent__'; r.innerHTML = `<span class="recent-icon">★</span><span>Recent</span><span class="count">${recent.length}</span>`;
-      r.onclick = ()=>{ selected='__recent__'; renderTree(); renderGrid(); }; treeEl.appendChild(r); }
-    const allRow = document.createElement('div'); allRow.className = 'folder-row' + (selected==='' ? ' active' : ''); allRow.dataset.path='';
-    allRow.innerHTML = `<span class="caret">•</span><span>All templates</span><span class="count">${root.count}</span>`;
-    allRow.onclick = ()=>{ selected=''; renderTree(); renderGrid(); }; treeEl.appendChild(allRow);
-    const ul = document.createElement('ul');
-    function draw(node){ for(const [name, child] of node.children){ const li=document.createElement('li'); const row=document.createElement('div');
-      row.className='folder-row' + (selected===child.path ? ' active':'');
-      row.innerHTML = `<span class="caret">▸</span><span>${name}</span><span class="count">${child.count}</span>`;
-      li.appendChild(row); row.onclick = (e)=>{ e.stopPropagation(); if(expanded.has(child.path)) expanded.delete(child.path); else expanded.add(child.path); selected = child.path; renderTree(); renderGrid(); };
-      const hasKids = child.children && child.children.size; if(hasKids){ const sub=document.createElement('ul');
-        if(expanded.has(child.path)){ li.classList.add('is-open'); sub.style.display='block'; } else { sub.style.display='none'; }
-        li.appendChild(sub); draw({children: child.children}); } ul.appendChild(li); } }
-    draw(root); treeEl.appendChild(ul);
-  }
-  function matchQuery(t,q){ if(!q) return true; const hay = `${t.name||''} ${(t.tags||[]).join(' ')} ${t.file||''}`; return hay.toLowerCase().includes(q.toLowerCase()); }
-  function renderGrid(){
-    grid.innerHTML=''; const q=(searchEl && searchEl.value || '').trim();
-    let list = allTemplates.filter(t=>matchQuery(t,q));
-    if (selected==='__recent__'){ const rset = new Set(getRecent().map(x=>x.file)); list = list.filter(t=>rset.has(t.file)); }
-    else if (selected){ list = list.filter(t=>{ const p=getFolderPath(t); return p===selected || p.startsWith(selected+'/'); }); }
-    if(!list.length){ const div=document.createElement('div'); div.style.opacity='.75'; div.textContent='No templates found.'; grid.appendChild(div); return; }
-    for(const t of list){
-      const card=document.createElement('div'); card.className='tpl-card';
-      const thumb=document.createElement('div'); thumb.className='tpl-thumb';
-      if(t.thumbnail){ const img=document.createElement('img'); img.src=t.thumbnail; img.alt=t.name||'Template'; thumb.appendChild(img); } else { thumb.textContent='No preview'; }
-      const name=document.createElement('div'); name.className='tpl-name'; name.textContent=t.name || t.file;
-      const meta=document.createElement('div'); meta.className='tpl-meta'; meta.textContent = t.folder ? `templates/${t.folder}` : 'templates';
-      const actions=document.createElement('div'); actions.className='tpl-actions';
-      const loadBtn=document.createElement('button'); loadBtn.className='tpl-btn'; loadBtn.textContent='Load';
-      loadBtn.onclick = async ()=>{ try{ const data = await fetchJSON(t.url || t.file); if (typeof loadBoardData === 'function') loadBoardData(data); rememberRecent(t.file); overlay.classList.remove('show'); }catch(e){ alert('Failed to load '+t.file+': '+e.message); } };
-      const linkBtn=document.createElement('button'); linkBtn.className='tpl-btn'; linkBtn.textContent='Share link';
-      linkBtn.onclick = async ()=>{ const u = new URL(location.href); u.searchParams.set('src', t.file); try{ await navigator.clipboard.writeText(u.toString()); alert('Link copied!'); } catch(e){ prompt('Copy link:', u.toString()); } };
-      actions.appendChild(loadBtn); actions.appendChild(linkBtn);
-      card.appendChild(thumb); card.appendChild(name); card.appendChild(meta); card.appendChild(actions); grid.appendChild(card);
-    }
-  }
-  searchEl?.addEventListener('input', ()=> renderGrid());
-  (async function initTemplates(){
-    try{ allTemplates = await listTemplates(); }catch(e){ console.warn('Template discovery failed:', e); allTemplates = []; }
-    renderTree(); renderGrid();
-    try{ const sp = new URLSearchParams(location.search); const src = sp.get('src'); if (src){ const data = await fetchJSON(src); if (typeof loadBoardData === 'function') loadBoardData(data); } }catch(e){ console.warn('Auto-load via ?src failed:', e); }
-  })();
-})();
-
-async function gatherFilesFromDirHandle(dirHandle){
-  const files = [];
-  async function walk(handle){
-    try{
-      for await (const [name, h] of handle.entries()){
-        if (h.kind === 'file'){
-          try{
-            const f = await h.getFile();
-            if ((f.type||'').startsWith('video/')) files.push(f);
-          }catch{}
-        }else if (h.kind === 'directory'){
-          await walk(h);
-        }
-      }
-    }catch(e){ /* not supported or denied */ }
-  }
-  await walk(dirHandle);
-  return files;
+<script>
+function isPageMode(){
+  try{
+    var sec = document.getElementById('pageSection');
+    return !!(sec && !sec.classList.contains('hidden'));
+  }catch(e){ return false; }
 }
-
-function buildSigKey(sig){
-  if(!sig) return '';
-  const name = (sig.name||'').toLowerCase();
-  const size = sig.size||0;
-  const lm   = sig.lastModified||0;
-  const type = (sig.type||'').toLowerCase();
-  return [name, size, lm, type].join('|');
-}
-
-async function relinkFromFileList(files, onlyMissing){
-  const byStrong = new Map();
-  const byName   = new Map();
-  for (const f of files){
-    const key = buildSigKey({name:f.name,size:f.size,lastModified:f.lastModified,type:f.type});
-    byStrong.set(key, f);
-    byName.set((f.name||'').toLowerCase(), f);
-  }
-  let relinked = 0;
-  for (const s of shots){
-    if (s.mediaType !== 'video') continue;
-    if (onlyMissing && s.previewURL) continue;
-    const sig = s.sourceHint || {name:s.filename||''};
-    const strong = buildSigKey(sig);
-    let file = byStrong.get(strong);
-    if (!file){
-      file = byName.get((sig.name||s.filename||'').toLowerCase());
-    }
-    if (file){
-      try{
-        const url = URL.createObjectURL(file);
-        s.previewURL = url;
-        s.filename = file.name || s.filename;
-        s.format = inferFormat(file);
-        if (!s.thumb){
-          try{ s.thumb = await videoPoster(file) || ''; }catch{}
-        }
-        s.sourceHint = { name:file.name||'', size:(file.size||0), lastModified:(file.lastModified||0), type:file.type||'' };
-        relinked++;
-      }catch(e){ console.warn('Failed to relink', e); }
-    }
-  }
-  if (relinked){
-    render();
-    alert('Relinked ' + relinked + ' video(s).');
-  }else{
-    alert('No matching videos found in the selected folder.');
-  }
-}
-
-function countMissingVideos(){
-  return shots.filter(s => s.mediaType==='video' && !s.previewURL).length;
-}
-
-async function maybeAutoRelinkVideos(){
-  const missing = countMissingVideos();
-  if (!missing) return;
-  const go = confirm('This board has ' + missing + ' video(s) that need re-linking. Pick a folder to scan now?');
-  if (go){ await chooseFolderAndRelink({onlyMissing:true}); }
-}
-
-async function chooseFolderAndRelink(options){
-  options = options || {};
-  const onlyMissing = options.onlyMissing !== false; // default true
-  let files = [];
-
-  if (window.showDirectoryPicker){
-    try{
-      const dirHandle = await window.showDirectoryPicker({mode:'read'});
-      files = await gatherFilesFromDirHandle(dirHandle);
-    }catch(e){ /* user cancelled */ }
-  }
-  if (!files.length){
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.multiple = true;
-    input.accept = 'video/*';
-    input.webkitdirectory = true;
-    input.directory = true;
-    const picked = await new Promise(res => { input.onchange = ()=> res([...input.files]); input.click(); });
-    files = picked || [];
-  }
-  if (!files.length) return;
-  await relinkFromFileList(files, onlyMissing);
-}
-
-
 </script>
 
 <script>
-// print
-printBtn.addEventListener('click',()=>{
-  if(shots.length===0){ alert('No shots to print.'); return; }
-  const list=filteredShots(), w=window.open('','_blank');
-  const styles=`@page{size:A4;margin:14mm} body{font:12px/1.35 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;color:#111}
-    .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px} .card{break-inside:avoid;border:1px solid #d7dae0;border-radius:8px;padding:8px}
-    .head{display:flex;justify-content:space-between;align-items:center;font-weight:600;margin-bottom:6px;font-size:11px}
-    .thumb{width:100%;height:140px;object-fit:cover;background:#000;border-radius:4px}
-    .meta{font-size:10px;color:#333;margin-top:4px} .label{color:#6b7280} h1{font-size:14px;margin:0 0 8px} .note{font-size:10px;color:#555;margin-bottom:10px}
-    .desc{white-space:pre-wrap}`;
-  const title=document.title, time=new Date().toLocaleString();
-  const html=`<!doctype html><html><head><meta charset="utf-8"><title>${title} — Print</title><style>${styles}</style><style id="drop-follow-box-style">
-  #drop-follow-box{
-    position:absolute;
-    border:2px dashed #3b82f6;
-    border-radius:12px;
-    pointer-events:none;
-    z-index:9999;
-    background:rgba(59,130,246,0.06);
-    display:none;
-  }
-</style>
-</head><body>
-    <h1>Shot List</h1><div class="note">Generated ${time}. Use your browser’s <b>Save as PDF</b>.</div><div class="grid">${
-      list.map((s,i)=>`
-        <div class="card">
-          <div class="head"><div>#${String(i+1).padStart(3,'0')} ${s.starred?'★':''} — ${escapeHtml(s.title||'')}</div><div>${
-            escapeHtml((s.startTC||'')+(s.endTC? ' — '+s.endTC : ''))}</div></div>
-          <img class="thumb" src="${s.thumb}" alt="thumb">
-          <div class="meta"><span class="label">File:</span> ${escapeHtml(s.filename)} &nbsp; <span class="label">Type:</span> ${escapeHtml(s.format||'')}</div>
-          <div class="meta"><span class="label">Camera:</span> ${escapeHtml(s.camera||'')} &nbsp; <span class="label">Lens:</span> ${escapeHtml(s.lens||'')}</div>
-          <div class="meta"><span class="label">Take:</span> ${escapeHtml(s.take||'')}</div>
-          <div class="meta desc"><span class="label">Desc:</span> ${escapeHtml(s.desc||'')}</div>
-          <div class="meta"><span class="label">Notes:</span> ${escapeHtml(s.notes||'')}</div>
-        </div>`).join('')}</div><script>setTimeout(()=>window.print(),400)<\/script></body></html>`;
-  w.document.open(); w.document.write(html); w.document.close();
-});
-
-
-// shortcuts (disabled while typing)
-document.addEventListener('keydown',(e)=>{
-  const tag=(e.target&&e.target.tagName||'').toLowerCase();
-  const typing=['input','textarea','select'].includes(tag) || (e.target && e.target.isContentEditable);
-  if(typing) return;
-  if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='a'){ e.preventDefault(); shots.forEach(s=>s.selected=true); render(); }
-  else if(e.key==='Delete'){ const any=shots.some(s=>s.selected); if(any){ shots=shots.filter(s=>!s.selected); render(); } }
-  else if(e.key.toLowerCase()==='p'){ e.preventDefault(); printBtn.click(); }
-});
-
-function escapeHtml(str){ return String(str).replace(/[&<>\"']/g,s=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[s])); }
-
-// --- Export CSV ---
-function csvEscape(v){
-if (v === undefined || v === null) return '';
-const s = String(v).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-}
-function buildCsvRows(list){
-const headers = [
-  'Index','Filename','Format','MediaType','Title','Description',
-  'Camera','Lens','Take','Notes','StartTC','EndTC','Starred','WebPFrame','WebPTotalFrames'
-];
-const rows = list.map((s, i) => [
-  i+1,
-  s.filename||'',
-  s.format||'',
-  s.mediaType||'',
-  s.title||'',
-  s.desc||'',
-  s.camera||'',
-  s.lens||'',
-  s.take||'',
-  s.notes||'',
-  s.startTC||'',
-  s.endTC||'',
-  s.starred ? 1 : 0,
-  (Number.isInteger(s.webpFrame) ? s.webpFrame : ''),
-  (s.webpTotalFrames || '')
-]);
-return [headers, ...rows];
-}
-exportCSVBtn.addEventListener('click', (e)=>{
-const list = (typeof filteredShots === 'function' ? filteredShots() : shots) || [];
-if(!list.length){ alert('No shots to export.'); return; }
-// Alt/Option-click to export ALL, otherwise export current filtered view
-const out = (e && e.altKey) ? shots : list;
-const rows = buildCsvRows(out);
-const csv = rows.map(r => r.map(csvEscape).join(',')).join('\r\n');
-const blob = new Blob(["\ufeff"+csv], {type: 'text/csv;charset=utf-8;'}); // BOM for Excel
-const a = document.createElement('a');
-a.href = URL.createObjectURL(blob);
-a.download = 'shotlist.csv';
-document.body.appendChild(a);
-a.click();
-setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 0);
-});
-
-async function gatherFilesFromDirHandle(dirHandle){
-  const files = [];
-  async function walk(handle){
-    try{
-      for await (const [name, h] of handle.entries()){
-        if (h.kind === 'file'){
-          try{
-            const f = await h.getFile();
-            if ((f.type||'').startsWith('video/')) files.push(f);
-          }catch{}
-        }else if (h.kind === 'directory'){
-          await walk(h);
-        }
-      }
-    }catch(e){ /* not supported or denied */ }
-  }
-  await walk(dirHandle);
-  return files;
-}
-
-function buildSigKey(sig){
-  if(!sig) return '';
-  const name = (sig.name||'').toLowerCase();
-  const size = sig.size||0;
-  const lm   = sig.lastModified||0;
-  const type = (sig.type||'').toLowerCase();
-  return [name, size, lm, type].join('|');
-}
-
-async function relinkFromFileList(files, onlyMissing){
-  const byStrong = new Map();
-  const byName   = new Map();
-  for (const f of files){
-    const key = buildSigKey({name:f.name,size:f.size,lastModified:f.lastModified,type:f.type});
-    byStrong.set(key, f);
-    byName.set((f.name||'').toLowerCase(), f);
-  }
-  let relinked = 0;
-  for (const s of shots){
-    if (s.mediaType !== 'video') continue;
-    if (onlyMissing && s.previewURL) continue;
-    const sig = s.sourceHint || {name:s.filename||''};
-    const strong = buildSigKey(sig);
-    let file = byStrong.get(strong);
-    if (!file){
-      file = byName.get((sig.name||s.filename||'').toLowerCase());
+// Paging helpers (Page Mode only)
+(function(){
+  if (window.pager && window.pager.__wired) return;
+  window.pager = Object.assign(window.pager || {}, {
+    enabled: true,
+    __wired: true,
+    el: null, prev: null, next: null, info: null,
+    init(){
+      this.el = document.getElementById('floatPager');
+      this.prev = document.getElementById('pagePrev');
+      this.next = document.getElementById('pageNext');
+      this.info = document.getElementById('pageInfo');
+      if (this.prev) this.prev.addEventListener('click', ()=> window.pager.go(-1));
+      if (this.next) this.next.addEventListener('click', ()=> window.pager.go(+1));
+      this.update();
+    },
+    pages(){
+      const list = (typeof filteredShots==='function' ? filteredShots() : (window.shots||[]));
+      const total = list.length;
+      const per = Math.max(1, (typeof BATCH_SIZE!=='undefined' ? (BATCH_SIZE|0) : 24));
+      const pages = Math.max(1, Math.ceil(total/per));
+      if (typeof pageIndex === 'undefined') window.pageIndex = 0;
+      if (pageIndex >= pages) pageIndex = pages-1;
+      if (pageIndex < 0) pageIndex = 0;
+      return { total, per, pages };
+    },
+    update(){
+      const { pages } = this.pages();
+      try{ localStorage.setItem('pageIndex', String(pageIndex)); }catch{}
+      if (this.info) this.info.textContent = `Page ${pages ? (pageIndex+1) : 0} / ${pages}`;
+      if (this.prev) this.prev.disabled = (pageIndex<=0);
+      if (this.next) this.next.disabled = (pageIndex>=pages-1);
+    },
+    go(delta){
+      const { pages } = this.pages();
+      pageIndex = Math.max(0, Math.min(pages-1, pageIndex + (delta|0)));
+      try{ localStorage.setItem('pageIndex', String(pageIndex)); }catch{}
+      if (typeof render==='function') render();
+      window.scrollTo({top:0, behavior:'smooth'});
+    },
+    show(on){
+      const el = this.el || document.getElementById('floatPager');
+      if (!el) return;
+      el.classList.toggle('hidden', !on);
     }
-    if (file){
+  });
+  document.addEventListener('DOMContentLoaded', ()=> window.pager.init());
+  // Keyboard shortcuts for pager (Page Mode only, not while typing)
+  document.addEventListener('keydown', (e)=>{
+    const tag=(e.target&&e.target.tagName||'').toLowerCase();
+    const typing=['input','textarea','select'].includes(tag) || (e.target && e.target.isContentEditable);
+    if (typing) return;
+    if (typeof isPageMode==="function" ? isPageMode() : (window.mode==="page")){
+      if (e.key === 'ArrowLeft'){ e.preventDefault(); window.pager.go(-1); }
+      else if (e.key === 'ArrowRight'){ e.preventDefault(); window.pager.go(+1); }
+    }
+  }, true);
+})();
+</script>
+
+<script>
+
+// Toolbar chevron toggle (persisted)
+(function(){
+  const t = document.getElementById('toolbarToggle');
+  if(!t) return;
+  const KEY = 'shotlist.toolbarCollapsed';
+  const apply = (on)=>{
+    document.body.classList.toggle('toolbar-collapsed', !!on);
+    t.textContent = on ? '▼' : '▲';
+    const tt = on ? 'Show Toolbar' : 'Hide Toolbar';
+    t.title = tt; t.setAttribute('aria-label', tt);
+  };
+  apply(localStorage.getItem(KEY)==='1');
+  t.addEventListener('click', ()=>{
+    const on = !(localStorage.getItem(KEY)==='1');
+    localStorage.setItem(KEY, on ? '1' : '0');
+    apply(on);
+  });
+})();
+
+  // print
+  printBtn.addEventListener('click',()=>{
+    if(shots.length===0){ alert('No shots to print.'); return; }
+    const list=filteredShots(), w=window.open('','_blank');
+    const styles=`@page{size:A4;margin:14mm} body{font:12px/1.35 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;color:#111}
+      .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px} .card{break-inside:avoid;border:1px solid #d7dae0;border-radius:8px;padding:8px}
+      .head{display:flex;justify-content:space-between;align-items:center;font-weight:600;margin-bottom:6px;font-size:11px}
+      .thumb{width:100%;height:140px;object-fit:cover;background:#000;border-radius:4px}
+      .meta{font-size:10px;color:#333;margin-top:4px} .label{color:#6b7280} h1{font-size:14px;margin:0 0 8px} .note{font-size:10px;color:#555;margin-bottom:10px}
+      .desc{white-space:pre-wrap}`;
+    const title=document.title, time=new Date().toLocaleString();
+    const html=`<!doctype html><html><head><meta charset="utf-8"><title>${title} — Print</title><style>${styles}</style><style id="drop-follow-box-style">
+    #drop-follow-box{
+      position:absolute;
+      border:2px dashed #3b82f6;
+      border-radius:12px;
+      pointer-events:none;
+      z-index:9999;
+      background:rgba(59,130,246,0.06);
+      display:none;
+    }
+  </style>
+  </head><body>
+      <h1>Shot List</h1><div class="note">Generated ${time}. Use your browser’s <b>Save as PDF</b>.</div><div class="grid">${
+        list.map((s,i)=>`
+          <div class="card">
+            <div class="head"><div>#${String(i+1).padStart(3,'0')} ${s.starred?'★':''} — ${escapeHtml(s.title||'')}</div><div>${
+              escapeHtml((s.startTC||'')+(s.endTC? ' — '+s.endTC : ''))}</div></div>
+            <img class="thumb" src="${s.thumb}" alt="thumb">
+            <div class="meta"><span class="label">File:</span> ${escapeHtml(s.filename)} &nbsp; <span class="label">Type:</span> ${escapeHtml(s.format||'')}</div>
+            <div class="meta"><span class="label">Camera:</span> ${escapeHtml(s.camera||'')} &nbsp; <span class="label">Shot Size:</span> ${escapeHtml(s.lens||'')}</div>
+            <div class="meta"><span class="label">Take:</span> ${escapeHtml(s.take||'')}</div>
+            <div class="meta desc"><span class="label">Desc:</span> ${escapeHtml(s.desc||'')}</div>
+            <div class="meta"><span class="label">Notes:</span> ${escapeHtml(s.notes||'')}</div>
+          </div>`).join('')}</div><script>setTimeout(()=>window.print(),400)<\/script></body></html>`;
+    w.document.open(); w.document.write(html); w.document.close();
+  });
+  
+  
+  // shortcuts (disabled while typing)
+  document.addEventListener('keydown',(e)=>{
+    const tag=(e.target&&e.target.tagName||'').toLowerCase();
+    const typing=['input','textarea','select'].includes(tag) || (e.target && e.target.isContentEditable);
+    if(typing) return;
+    if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='a'){ e.preventDefault(); shots.forEach(s=>s.selected=true); render(); }
+    else if(e.key==='Delete'){ const any=shots.some(s=>s.selected); if(any){ shots=shots.filter(s=>!s.selected); render(); } }
+    else if(e.key.toLowerCase()==='p'){ e.preventDefault(); printBtn.click(); }
+  });
+  
+  function escapeHtml(str){ return String(str).replace(/[&<>\"']/g,s=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[s])); }
+  
+  // --- Export CSV ---
+  function csvEscape(v){
+  if (v === undefined || v === null) return '';
+  const s = String(v).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+  function buildCsvRows(list){
+  const headers = [
+    'Index','Filename','Format','MediaType','Title','Description',
+    'Camera','Shot Size','Take','Notes','StartTC','EndTC','Starred','WebPFrame','WebPTotalFrames'
+  ];
+  const rows = list.map((s, i) => [
+    i+1,
+    s.filename||'',
+    s.format||'',
+    s.mediaType||'',
+    s.title||'',
+    s.desc||'',
+    s.camera||'',
+    s.lens||'',
+    s.take||'',
+    s.notes||'',
+    s.startTC||'',
+    s.endTC||'',
+    s.starred ? 1 : 0,
+    (Number.isInteger(s.webpFrame) ? s.webpFrame : ''),
+    (s.webpTotalFrames || '')
+  ]);
+  return [headers, ...rows];
+  }
+  exportCSVBtn.addEventListener('click', (e)=>{
+  const list = (typeof filteredShots === 'function' ? filteredShots() : shots) || [];
+  if(!list.length){ alert('No shots to export.'); return; }
+  // Alt/Option-click to export ALL, otherwise export current filtered view
+  const out = (e && e.altKey) ? shots : list;
+  const rows = buildCsvRows(out);
+  const csv = rows.map(r => r.map(csvEscape).join(',')).join('\r\n');
+  const blob = new Blob(["\ufeff"+csv], {type: 'text/csv;charset=utf-8;'}); // BOM for Excel
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'shotlist.csv';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 0);
+  });
+  
+  async function gatherFilesFromDirHandle(dirHandle){
+    const files = [];
+    async function walk(handle){
       try{
-        const url = URL.createObjectURL(file);
-        s.previewURL = url;
-        s.filename = file.name || s.filename;
-        s.format = inferFormat(file);
-        if (!s.thumb){
-          try{ s.thumb = await videoPoster(file) || ''; }catch{}
+        for await (const [name, h] of handle.entries()){
+          if (h.kind === 'file'){
+            try{
+              const f = await h.getFile();
+              if ((f.type||'').startsWith('video/')) files.push(f);
+            }catch{}
+          }else if (h.kind === 'directory'){
+            await walk(h);
+          }
         }
-        s.sourceHint = { name:file.name||'', size:(file.size||0), lastModified:(file.lastModified||0), type:file.type||'' };
-        relinked++;
-      }catch(e){ console.warn('Failed to relink', e); }
+      }catch(e){ /* not supported or denied */ }
+    }
+    await walk(dirHandle);
+    return files;
+  }
+  
+  function buildSigKey(sig){
+    if(!sig) return '';
+    const name = (sig.name||'').toLowerCase();
+    const size = sig.size||0;
+    const lm   = sig.lastModified||0;
+    const type = (sig.type||'').toLowerCase();
+    return [name, size, lm, type].join('|');
+  }
+  
+  async function relinkFromFileList(files, onlyMissing){
+    const byStrong = new Map();
+    const byName   = new Map();
+    for (const f of files){
+      const key = buildSigKey({name:f.name,size:f.size,lastModified:f.lastModified,type:f.type});
+      byStrong.set(key, f);
+      byName.set((f.name||'').toLowerCase(), f);
+    }
+    let relinked = 0;
+    for (const s of shots){
+      if (s.mediaType !== 'video') continue;
+      if (onlyMissing && s.previewURL) continue;
+      const sig = s.sourceHint || {name:s.filename||''};
+      const strong = buildSigKey(sig);
+      let file = byStrong.get(strong);
+      if (!file){
+        file = byName.get((sig.name||s.filename||'').toLowerCase());
+      }
+      if (file){
+        try{
+          const url = URL.createObjectURL(file);
+          s.previewURL = url;
+          s.filename = file.name || s.filename;
+          s.format = inferFormat(file);
+          if (!s.thumb){
+            try{ s.thumb = await videoPoster(file) || ''; }catch{}
+          }
+          s.sourceHint = { name:file.name||'', size:(file.size||0), lastModified:(file.lastModified||0), type:file.type||'' };
+          relinked++;
+        }catch(e){ console.warn('Failed to relink', e); }
+      }
+    }
+    if (relinked){
+      render();
+      alert('Relinked ' + relinked + ' video(s).');
+    }else{
+      alert('No matching videos found in the selected folder.');
     }
   }
-  if (relinked){
-    render();
-    alert('Relinked ' + relinked + ' video(s).');
-  }else{
-    alert('No matching videos found in the selected folder.');
+  
+  function countMissingVideos(){
+    return shots.filter(s => s.mediaType==='video' && !s.previewURL).length;
   }
-}
-
-function countMissingVideos(){
-  return shots.filter(s => s.mediaType==='video' && !s.previewURL).length;
-}
-
-async function maybeAutoRelinkVideos(){
-  const missing = countMissingVideos();
-  if (!missing) return;
-  const go = confirm('This board has ' + missing + ' video(s) that need re-linking. Pick a folder to scan now?');
-  if (go){ await chooseFolderAndRelink({onlyMissing:true}); }
-}
-
-async function chooseFolderAndRelink(options){
-  options = options || {};
-  const onlyMissing = options.onlyMissing !== false; // default true
-  let files = [];
-
-  if (window.showDirectoryPicker){
-    try{
-      const dirHandle = await window.showDirectoryPicker({mode:'read'});
-      files = await gatherFilesFromDirHandle(dirHandle);
-    }catch(e){ /* user cancelled */ }
+  
+  async function maybeAutoRelinkVideos(){
+    const missing = countMissingVideos();
+    if (!missing) return;
+    const go = confirm('This board has ' + missing + ' video(s) that need re-linking. Pick a folder to scan now?');
+    if (go){ await chooseFolderAndRelink({onlyMissing:true}); }
   }
-  if (!files.length){
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.multiple = true;
-    input.accept = 'video/*';
-    input.webkitdirectory = true;
-    input.directory = true;
-    const picked = await new Promise(res => { input.onchange = ()=> res([...input.files]); input.click(); });
-    files = picked || [];
+  
+  async function chooseFolderAndRelink(options){
+    options = options || {};
+    const onlyMissing = options.onlyMissing !== false; // default true
+    let files = [];
+  
+    if (window.showDirectoryPicker){
+      try{
+        const dirHandle = await window.showDirectoryPicker({mode:'read'});
+        files = await gatherFilesFromDirHandle(dirHandle);
+      }catch(e){ /* user cancelled */ }
+    }
+    if (!files.length){
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.multiple = true;
+      input.accept = 'video/*';
+      input.webkitdirectory = true;
+      input.directory = true;
+      const picked = await new Promise(res => { input.onchange = ()=> res([...input.files]); input.click(); });
+      files = picked || [];
+    }
+    if (!files.length) return;
+    await relinkFromFileList(files, onlyMissing);
   }
-  if (!files.length) return;
-  await relinkFromFileList(files, onlyMissing);
-}
+</script>
 
-
+<script>
+// Defensive stubs: if any legacy calls fire, no-op them.
+(function(){
+  const names = [
+    'openTemplates', 'openTemplatesModal', 'showTemplatesModal', 'applyShotTemplate',
+    'applyTemplateToSelection', 'applyTemplate', 'replaceFromTemplate', 'replaceTemplate',
+    'fetchTemplates', 'loadTemplates', 'loadTemplateCard', 'loadTemplateFromURL',
+    'scanTemplatesManifest', 'applyBoardTemplate', 'applyTemplateToBoard'
+  ];
+  names.forEach(n => { try { if (typeof window[n] === 'function') window[n] = function(){ /* templates disabled */ }; } catch(e){} });
+  // Also neutralize any global hotkeys that may open Templates
+  window.addEventListener('keydown', function(e){
+    if ((e.ctrlKey || e.metaKey) && (e.key === 't' || e.key === 'T')) {
+      e.preventDefault();
+      e.stopPropagation();
+      // templates disabled
+    }
+  }, true);
+})();
 </script>
 
 </body>
