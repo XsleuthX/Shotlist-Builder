@@ -150,7 +150,14 @@ details.panel[open]>.panel-summary::after{content:"▴"}
 /* Page Mode */
 #pageContainer{margin-top:12px}
 .page-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:12px}
-.card{background:rgba(255,255,255,.04); border:1px solid var(--line); border-radius:var(--r-xl); padding:12px; box-shadow:var(--shadow-1); backdrop-filter: blur(6px)}
+.card{background:rgba(255,255,255,.04); border:1px solid var(--line); border-radius:var(--r-xl); padding:12px; box-shadow:var(--shadow-1); backdrop-filter: blur(6px);
+  --chevron-bottom: 10px;      /* how far from the card’s bottom edge */
+  --chevron-hit-h: 24px;       /* chevron’s clickable height */
+  --chevron-gap: 12px;         /* minimum gap between content and chevron */
+  position: relative;
+  padding-bottom: calc(var(--chevron-hit-h) + var(--chevron-gap) + var(--chevron-bottom));
+  /* overflow: visible;  // uncomment if your chevron ever sits outside */
+}
 .card.dragging{opacity:.65; outline:1px dashed var(--accent-strong)}
 .card .head{display:flex; align-items:center; gap:10px; margin-bottom:8px}
 .star{cursor:pointer; font-size:18px; line-height:1; user-select:none; color:#c0a96f}
@@ -267,6 +274,68 @@ button.chevron-toggle:hover{ color: var(--ink); }
 }
 .float-pager .btn.muted{ min-width: 48px; padding: 6px 10px 6px 28px; }
 .float-pager .btn.muted::before{ display:none; } /* remove gold dot in tiny buttons */
+
+
+.card{ position: relative; }
+.card .card-chevron{
+  all: unset;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: var(--chevron-bottom);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--ink-dim);
+  padding: 8px 14px;  
+}
+.card .card-chevron:hover{ color: var(--ink); }
+
+
+.popup.hidden{ display:none; }
+
+
+/* Page card bottom chevron — minimal (no circle), extra padding */
+.card{ position: relative; }
+.card .card-chevron{
+  all: unset;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 6px;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--ink-dim);
+  padding: 8px 14px; /* increased click area */
+}
+.card .card-chevron::before,
+.card .card-chevron::after{ display:none !important; }
+.card .card-chevron:hover{ color: var(--ink); background: transparent !important; }
+
+
+/* === Video hover timecode (appears only when hovering the video) === */
+.tc-hover{
+  display:none;
+  margin-top:6px;
+  text-align:center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size:16px;
+  letter-spacing:.3px;
+  color: var(--ink);
+  background: rgba(0,0,0,.28);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 4px 8px;
+  width: max-content;
+  margin-left:auto;
+  margin-right:auto;
+  box-shadow: var(--shadow-1);
+}
+.media:hover + .tc-hover{ display:block; }
 
 </style>
 
@@ -711,6 +780,7 @@ async function chooseFolderAndRelink(options){
         <button id="exportJSON" class="btn"> Export JSON</button>
         <label class="filebtn btn"><input id="importJSON" type="file" accept="application/json"> Import JSON</label>
         <button id="relinkVideos" class="btn"> Relink Videos</button>
+        <button id="reloadMedia" class="btn muted" title="Clear caches and reload media"> Reload Media</button>
       </div>
 
       <div class="spacer"></div>
@@ -728,10 +798,29 @@ async function chooseFolderAndRelink(options){
         <button id="expandAllCards" class="btn" disabled title="Expand all cards in Page Mode">Expand All</button>
         <button id="printBtn" class="btn ok"> Print / Save to PDF</button>
         <button id="exportCSV" class="btn ok"> Export CSV</button>
+        <button id="exportHTMLDocs" class="btn ok"> Export HTML (Docs)</button>
+        <button id="exportFieldsBtn" class="btn"> Fields ▾</button>
       </div>
         
     </div>
   </div>
+
+<div id="exportFieldsPanel" class="popup hidden" style="position:absolute; z-index: 60; background: var(--panel); border:1px solid var(--line); border-radius:12px; padding:10px; box-shadow: var(--shadow-2);">
+  <div class="mini" style="margin-bottom:6px">Choose fields to export</div>
+  <label><input type="checkbox" data-fld="index" checked> Index #</label><br>
+  <label><input type="checkbox" data-fld="thumb" checked> Thumbnail</label><br>
+  <label><input type="checkbox" data-fld="title" checked> Title</label><br>
+  <label><input type="checkbox" data-fld="timecode" checked> Timecode</label><br>
+  <label><input type="checkbox" data-fld="filename" checked> File</label><br>
+  <label><input type="checkbox" data-fld="format" checked> Type/Format</label><br>
+  <label><input type="checkbox" data-fld="camera" checked> Camera</label><br>
+  <label><input type="checkbox" data-fld="lens" checked> Shot Size</label><br>
+  <label><input type="checkbox" data-fld="take" checked> Take</label><br>
+  <label><input type="checkbox" data-fld="desc" checked> Description</label><br>
+  <label><input type="checkbox" data-fld="notes" checked> Notes</label><br>
+  <label><input type="checkbox" data-fld="starred"> Starred</label>
+</div>
+
 </header>
 
 <main>
@@ -780,13 +869,13 @@ async function chooseFolderAndRelink(options){
       <div class="group" style="flex-wrap:wrap;">
         <span class="label">Actions</span>
         <button id="memPurgeCache" class="btn muted">Free Cache</button>
-        <button id="memReleaseURLs" class="btn danger">Release URLs</button>
-        <button id="memStripOriginals" class="btn danger">Strip Originals</button>
+        <button id="memReleaseURLs" class="btn danger">Stop Render</button>
+        <button id="memStripOriginals" class="btn danger">Limit Render</button>
       </div>
       <div class="group">
         <span class="label">Keep first</span>
         <input id="memKeepN" type="number" value="24" min="0" max="500" style="width:80px">
-        <span class="mini">items when releasing</span>
+        <span class="label">items for render</span>
       </div>
       <div class="group">
         <span class="label">Page batch size</span>
@@ -819,7 +908,7 @@ async function chooseFolderAndRelink(options){
     <button id="pagePrev" class="btn muted" title="Previous Page" aria-label="Previous Page">◀</button>
     <span id="pageInfo" class="mini" aria-live="polite">Page 1 / 1</span>
     <button id="pageNext" class="btn muted" title="Next Page" aria-label="Next Page">▶</button>
-  </div>
+  </div>  
 
 </main>
 
@@ -964,6 +1053,7 @@ async function chooseFolderAndRelink(options){
   const importJSONInput = document.getElementById('importJSON');
   const exportCSVBtn = document.getElementById('exportCSV');
   const relinkVideosBtn = document.getElementById('relinkVideos');
+  const reloadMediaBtn = document.getElementById('reloadMedia');
   const parseTCBtn = document.getElementById('parseTC');
   const applyBatchBtn = document.getElementById('applyBatch');
   const batchTitle = document.getElementById('batchTitle');
@@ -984,6 +1074,7 @@ async function chooseFolderAndRelink(options){
   
 let shots = [];
 window._videoEls = window._videoEls || new Map();
+window._imgEls   = window._imgEls   || new Map();
 
 function removeShot(id){
   const i = shots.findIndex(s => s.id === id);
@@ -1027,9 +1118,6 @@ function setMediaAspect(holder, w, h){
   let renderCount = 0;
   let pageIndex = parseInt(localStorage.getItem("pageIndex")||"0",10)||0;
 let BATCH_SIZE = Math.max(8, Math.min(200, parseInt(localStorage.getItem("pageBatch")||"24",10)||24));
-window.pager = {
-  enabled: true,
-}
 
   const readAsDataURL = (file)=> new Promise((res, rej)=>{
     const fr = new FileReader(); fr.onerror = rej; fr.onload = ()=> res(fr.result); fr.readAsDataURL(file);
@@ -1149,6 +1237,7 @@ async function isAnimatedWebP(file){
       tr.querySelector('[data-filename]').textContent=s.filename;
       tr.querySelector('.selbox').checked=!!s.selected;
       tr.querySelector('.title').value=s.title||''; tr.querySelector('.starttc').value=s.startTC||''; tr.querySelector('.endtc').value=s.endTC||'';
+      attachFixedTC(tr.querySelector('.starttc'), s, 'startTC'); attachFixedTC(tr.querySelector('.endtc'), s, 'endTC');
       tr.querySelector('.desc').value=s.desc||''; tr.querySelector('.camera').value=s.camera||''; tr.querySelector('.lens').value=s.lens||'';
       tr.querySelector('.take').value=s.take||''; tr.querySelector('.notes').value=s.notes||'';
       tr.querySelector('.kind').textContent=s.format||guessFormatFromFilename(s.filename);
@@ -1221,19 +1310,25 @@ tr.querySelector('.selbox').addEventListener('change',e=> s.selected=e.target.ch
 
   
 function renderPage(){
+  const pageContainer = document.getElementById('pageContainer');
   const list = filteredShots();
   pageContainer.innerHTML='';
-  const per = Math.max(1, (typeof BATCH_SIZE!=='undefined' ? (BATCH_SIZE|0) : 24));
+  const per = Math.max(1,(BATCH_SIZE|0));
   const pages = Math.max(1, Math.ceil(list.length/per));
-  if (typeof pageIndex==='undefined') window.pageIndex = 0;
   if (pageIndex >= pages) pageIndex = pages-1;
   if (pageIndex < 0) pageIndex = 0;
-  const start = pageIndex*per; const end = Math.min(list.length, start+per);
-  if (window.pager && window.pager.show) window.pager.show(true);
-  (window.pager && window.pager.update && window.pager.update());
-  list.slice(start, end).forEach((s,i)=>{
-    const card = cardTpl.content.firstElementChild.cloneNode(true); card.dataset.id=s.id;
+  const start = pageIndex * per;
+  const end   = Math.min(list.length, start + per);
+
+  // Show/update pager when rendering page mode
+  window.pager?.show?.(true);
+  window.pager?.update?.();
+
+  list.slice(start, end).forEach((s, i)=>{
+    const card = cardTpl.content.firstElementChild.cloneNode(true);
+    card.dataset.id = s.id;
     card.querySelector('.idxbadge').textContent = `#${String(start + i + 1).padStart(3,'0')}`;
+    
     const starEl=card.querySelector('.star'); starEl.classList.toggle('on',!!s.starred); starEl.textContent=s.starred?'★':'☆';
     starEl.addEventListener('click',()=>{ s.starred=!s.starred; render(); });
 
@@ -1268,6 +1363,102 @@ function renderPage(){
         cached.dataset.boundMeta='1';
       }
       if (!cached.poster) cached.poster = s.thumb || '';
+      
+
+// --- Hover timecode overlay below the .media ---
+      (function bindHoverTC(){
+        const media = holder; // .media div
+        // Ensure chip exists just after media
+        let tcRow = media.nextElementSibling && media.nextElementSibling.classList && media.nextElementSibling.classList.contains('tc-hover') ? media.nextElementSibling : null;
+        if(!tcRow){
+          tcRow = document.createElement('div');
+          tcRow.className = 'tc-hover';
+          tcRow.textContent = '00:00:00:00';
+          media.after(tcRow);
+        }
+        const fpsGetter = () => (window.getFPS && window.getFPS()) ? window.getFPS() : ((window.FPS|0) || 24);
+        const updateOnce = ()=>{
+          try{
+            const fps = fpsGetter();
+            const t = Math.max(0, cached.currentTime||0);
+            const frames = Math.round(t * fps);
+            tcRow.textContent = (window.framesToTC? framesToTC(frames, fps) : '00:00:00:00');
+          }catch{}
+        };
+        // Keep per-video state; rebind if the chip changed
+        cached._tcState = cached._tcState || { hover:false, rafId:0, vfcId:0, boundTo:null };
+        const st = cached._tcState;
+        function cancelLoops(){
+          if (st.vfcId && cached.cancelVideoFrameCallback){ try{ cached.cancelVideoFrameCallback(st.vfcId); }catch{} st.vfcId = 0; }
+          if (st.rafId){ try{ cancelAnimationFrame(st.rafId); }catch{} st.rafId = 0; }
+        }
+        const loopRAF = ()=>{ updateOnce(); st.rafId = requestAnimationFrame(loopRAF); };
+        const loopVFC = ()=>{ updateOnce(); st.vfcId = cached.requestVideoFrameCallback(loopVFC); };
+        function startLoop(){
+          if (cached.requestVideoFrameCallback){
+            if (!st.vfcId) st.vfcId = cached.requestVideoFrameCallback(loopVFC);
+          } else {
+            if (!st.rafId) st.rafId = requestAnimationFrame(loopRAF);
+          }
+        }
+        function stopLoopIfIdle(){
+          if (!st.hover && cached.paused) cancelLoops();
+        }
+        // Rebind listeners if we haven't bound yet or chip node changed
+        if (st.boundTo !== tcRow){
+          // Remove old loops just in case
+          cancelLoops();
+          // Remove previous listeners by cloning trick (skip: we only ever add our named handlers and track them)
+          if (st.handlers){
+            try{
+              cached.removeEventListener('loadedmetadata', st.handlers.onMeta);
+              cached.removeEventListener('loadeddata', st.handlers.onMeta);
+              cached.removeEventListener('durationchange', st.handlers.onMeta);
+              cached.removeEventListener('timeupdate', st.handlers.onTime);
+              cached.removeEventListener('seeking', st.handlers.onSeek);
+              cached.removeEventListener('play', st.handlers.onPlay);
+              cached.removeEventListener('pause', st.handlers.onPause);
+              cached.removeEventListener('emptied', st.handlers.onEmptied);
+              cached.removeEventListener('stalled', st.handlers.onMeta);
+              cached.removeEventListener('suspend', st.handlers.onMeta);
+              cached.removeEventListener('canplay', st.handlers.onMeta);
+              cached.removeEventListener('canplaythrough', st.handlers.onMeta);
+              media.removeEventListener('mouseenter', st.handlers.onEnter);
+              media.removeEventListener('mouseleave', st.handlers.onLeave);
+            }catch{}
+          }
+          const onMeta = ()=> updateOnce();
+          const onSeek = ()=> updateOnce();
+          const onTime = ()=> updateOnce();
+          const onPlay = ()=> startLoop();
+          const onPause = ()=> stopLoopIfIdle();
+          const onEmptied = ()=>{ cancelLoops(); updateOnce(); };
+          cached.addEventListener('loadedmetadata', onMeta);
+          cached.addEventListener('loadeddata', onMeta);
+          cached.addEventListener('durationchange', onMeta);
+          cached.addEventListener('timeupdate', onTime);
+          cached.addEventListener('seeking', onSeek);
+          cached.addEventListener('play', onPlay);
+          cached.addEventListener('pause', onPause);
+          cached.addEventListener('emptied', onEmptied);
+          cached.addEventListener('stalled', onMeta);
+          cached.addEventListener('suspend', onMeta);
+          cached.addEventListener('canplay', onMeta);
+          cached.addEventListener('canplaythrough', onMeta);
+          function onEnter(){ st.hover = true; startLoop(); }
+          function onLeave(){ st.hover = false; stopLoopIfIdle(); }
+          media.addEventListener('mouseenter', onEnter);
+          media.addEventListener('mouseleave', onLeave);
+          st.handlers = { onMeta, onSeek, onTime, onPlay, onPause, onEmptied, onEnter, onLeave };
+          st.boundTo = tcRow;
+        }
+        // Initial sync + conditional loop
+        updateOnce();
+        if (!cached.paused || media.matches(':hover')) startLoop();
+      })();
+;
+;
+
       if (!cached.src || cached.src !== s.previewURL){ cached.src = s.previewURL; }
     } else {
       let canvas = holder.querySelector('canvas.webpCanvas');
@@ -1345,11 +1536,15 @@ function renderPage(){
       } else {
         if (holder._disposeWebP){ try{ holder._disposeWebP(); }catch{}; holder._disposeWebP=null; }
         canvas.classList.add('hidden'); ctrls.classList.add('hidden');
-        img.classList.remove('hidden'); vid.classList.add('hidden');
-        img.onload = ()=>{
+        let cachedImg = (window._imgEls && window._imgEls.get(s.id)) || null;
+if (cachedImg && cachedImg !== img){ img.replaceWith(cachedImg); }
+const im = cachedImg || img;
+if (!cachedImg && window._imgEls){ window._imgEls.set(s.id, im); }
+im.classList.remove('hidden'); vid.classList.add('hidden');
+        im.onload = ()=>{
           if ((!s.w || !s.h) && img.naturalWidth && img.naturalHeight){ s.w = img.naturalWidth; s.h = img.naturalHeight; setMediaAspect(holder, s.w, s.h); }
         };
-        img.src = s.thumb || '';
+        if (im.src !== (s.thumb||'')) im.src = s.thumb || '';
       }
     }
 
@@ -1358,6 +1553,30 @@ function renderPage(){
 
     const toggleBtn=card.querySelector('.toggleFields');
     if(s.collapsed) card.classList.add('fields-collapsed'); else card.classList.remove('fields-collapsed');
+    
+(function(){
+  const head = card.querySelector('.head');
+  const oldToggle = head.querySelector('.toggleFields');
+  if (oldToggle) { oldToggle.remove(); }
+  const sel = document.createElement('input');
+  sel.type = 'checkbox'; sel.className = 'selbox'; sel.title = 'Select';
+  sel.checked = !!s.selected;
+  sel.addEventListener('change', ()=>{ s.selected = sel.checked; });
+  const star = head.querySelector('.star');
+  (star && star.nextSibling) ? head.insertBefore(sel, star.nextSibling) : head.appendChild(sel);
+  let chev = card.querySelector('.card-chevron');
+  if (!chev){
+    chev = document.createElement('button');
+    chev.className = 'card-chevron';
+    chev.type = 'button';
+    chev.title = 'Expand/Collapse';
+    card.appendChild(chev);
+  }
+  const applyChevron = ()=>{ chev.textContent = s.collapsed ? '▼' : '▲'; };
+  applyChevron();
+  chev.onclick = (e)=>{ const multi=e.altKey||e.metaKey||e.ctrlKey; if(multi){ const ns=!s.collapsed; shots.forEach(x=> x.collapsed=ns);} else { s.collapsed=!s.collapsed; } render(); };
+})();
+
     toggleBtn.addEventListener('click',(e)=>{
       const multi = e.altKey||e.metaKey||e.ctrlKey;
       if(multi){ const ns=!s.collapsed; shots.forEach(x=> x.collapsed=ns); }
@@ -1367,10 +1586,11 @@ function renderPage(){
 
     card.querySelector('.starttc').value=s.startTC||'';
     card.querySelector('.endtc').value=s.endTC||'';
-    card.querySelector('.take').value=s.take||'';
-    card.querySelector('.camera').value=s.camera||'';
-    card.querySelector('.lens').value=s.lens||'';
-    card.querySelector('.desc').value=s.desc||'';
+    attachFixedTC(card.querySelector('.starttc'), s, 'startTC'); attachFixedTC(card.querySelector('.endtc'), s, 'endTC');
+    card.querySelector('.take').value=s.take||''; card.querySelector('.take').addEventListener('input',e=> s.take=e.target.value);
+    card.querySelector('.camera').value=s.camera||''; card.querySelector('.camera').addEventListener('input',e=> s.camera=e.target.value);
+    card.querySelector('.lens').value=s.lens||''; card.querySelector('.lens').addEventListener('input',e=> s.lens=e.target.value);
+    card.querySelector('.desc').value=s.desc||''; card.querySelector('.desc').addEventListener('input',e=> s.desc=e.target.value);
     card.querySelector('.filename').textContent=s.filename;
     const kindEl = card.querySelector('.kind');
     kindEl.textContent=s.format||guessFormatFromFilename(s.filename);
@@ -1528,7 +1748,26 @@ async function replaceMedia(shot,file){
   deselectAllBtn.addEventListener('click',()=>{ shots.forEach(s=>s.selected=false); render(); });
   deleteSelBtn.addEventListener('click',()=>{ shots.filter(s=>s.selected).map(s=>s.id).forEach(removeShot); });
   relinkVideosBtn.addEventListener('click',()=>{ chooseFolderAndRelink({onlyMissing:false}); });
-  clearAllBtn.addEventListener('click',()=>{ if(confirm('Remove all items?')){ shots.forEach(s=>{ if(s.mediaType==='video'&&s.previewURL) try{URL.revokeObjectURL(s.previewURL);}catch{}; if(s.imageURL) try{URL.revokeObjectURL(s.imageURL);}catch{} }); shots=[]; render(); }});
+  
+if (reloadMediaBtn) reloadMediaBtn.addEventListener('click', ()=>{
+  try{
+    if (window._videoEls){
+      for (const [id, v] of window._videoEls){
+        try{ v.pause(); v.removeAttribute('src'); v.load?.(); }catch{}
+      }
+      window._videoEls.clear();
+    }
+    if (window._imgEls){ window._imgEls.clear(); }
+    if (window._webpPlayers){
+      for (const [id, p] of window._webpPlayers){
+        try{ p.dispose?.(); }catch{}
+      }
+      window._webpPlayers.clear();
+    }
+  }catch(e){ console.warn('Reload Media failed', e); }
+  if (typeof render==='function') render();
+});
+clearAllBtn.addEventListener('click',()=>{ if(confirm('Remove all items?')){ shots.forEach(s=>{ if(s.mediaType==='video'&&s.previewURL) try{URL.revokeObjectURL(s.previewURL);}catch{}; if(s.imageURL) try{URL.revokeObjectURL(s.imageURL);}catch{} }); shots=[]; render(); }});
 
   // batch replace (not append)
   applyBatchBtn.addEventListener('click',()=>{
@@ -1799,8 +2038,10 @@ function memFreeCache(){
     }
     window._webpPlayers.clear();
   }
+  if (window._imgEls){ window._imgEls.clear();
+  }
   memUpdateStats();
-  alert('Freed cached video elements and WebP decoders.');
+  alert('Freed cached video elements, image elements, and WebP decoders.');
 }
 function memReleaseURLs(keepN){
   keepN = Math.max(0, parseInt(keepN)||0);
@@ -1862,76 +2103,64 @@ function memStripOriginals(keepN){
 
 </script>
 
-
 <script>
-function isPageMode(){
-  try{
-    var sec = document.getElementById('pageSection');
-    return !!(sec && !sec.classList.contains('hidden'));
-  }catch(e){ return false; }
-}
-</script>
-
-<script>
-// Paging helpers (Page Mode only)
-(function(){
-  if (window.pager && window.pager.__wired) return;
-  window.pager = Object.assign(window.pager || {}, {
-    enabled: true,
-    __wired: true,
-    el: null, prev: null, next: null, info: null,
-    init(){
-      this.el = document.getElementById('floatPager');
-      this.prev = document.getElementById('pagePrev');
-      this.next = document.getElementById('pageNext');
-      this.info = document.getElementById('pageInfo');
-      if (this.prev) this.prev.addEventListener('click', ()=> window.pager.go(-1));
-      if (this.next) this.next.addEventListener('click', ()=> window.pager.go(+1));
-      this.update();
-    },
-    pages(){
-      const list = (typeof filteredShots==='function' ? filteredShots() : (window.shots||[]));
-      const total = list.length;
-      const per = Math.max(1, (typeof BATCH_SIZE!=='undefined' ? (BATCH_SIZE|0) : 24));
-      const pages = Math.max(1, Math.ceil(total/per));
-      if (typeof pageIndex === 'undefined') window.pageIndex = 0;
-      if (pageIndex >= pages) pageIndex = pages-1;
-      if (pageIndex < 0) pageIndex = 0;
-      return { total, per, pages };
-    },
-    update(){
-      const { pages } = this.pages();
-      try{ localStorage.setItem('pageIndex', String(pageIndex)); }catch{}
-      if (this.info) this.info.textContent = `Page ${pages ? (pageIndex+1) : 0} / ${pages}`;
-      if (this.prev) this.prev.disabled = (pageIndex<=0);
-      if (this.next) this.next.disabled = (pageIndex>=pages-1);
-    },
-    go(delta){
-      const { pages } = this.pages();
-      pageIndex = Math.max(0, Math.min(pages-1, pageIndex + (delta|0)));
-      try{ localStorage.setItem('pageIndex', String(pageIndex)); }catch{}
-      if (typeof render==='function') render();
-      window.scrollTo({top:0, behavior:'smooth'});
-    },
-    show(on){
-      const el = this.el || document.getElementById('floatPager');
-      if (!el) return;
-      el.classList.toggle('hidden', !on);
-    }
-  });
-  document.addEventListener('DOMContentLoaded', ()=> window.pager.init());
-  // Keyboard shortcuts for pager (Page Mode only, not while typing)
-  document.addEventListener('keydown', (e)=>{
-    const tag=(e.target&&e.target.tagName||'').toLowerCase();
-    const typing=['input','textarea','select'].includes(tag) || (e.target && e.target.isContentEditable);
-    if (typing) return;
-    if (typeof isPageMode==="function" ? isPageMode() : (window.mode==="page")){
-      if (e.key === 'ArrowLeft'){ e.preventDefault(); window.pager.go(-1); }
-      else if (e.key === 'ArrowRight'){ e.preventDefault(); window.pager.go(+1); }
-    }
-  }, true);
-})();
-</script>
+  function isPageMode(){ try{ const sec=document.getElementById('pageSection'); return !!(sec && !sec.classList.contains('hidden')); }catch{ return false; } }
+  if (typeof pageIndex === 'undefined'){ window.pageIndex = parseInt(localStorage.getItem('pageIndex')||'0',10)||0; }
+  if (typeof BATCH_SIZE === 'undefined'){ window.BATCH_SIZE = Math.max(8, Math.min(200, parseInt(localStorage.getItem('pageBatch')||'24',10)||24)); }
+  
+  (function(){
+    window.pager = window.pager || {
+      enabled:true, el:null, prev:null, next:null, info:null,
+      init(){
+        this.el=document.getElementById('floatPager');
+        this.prev=document.getElementById('pagePrev');
+        this.next=document.getElementById('pageNext');
+        this.info=document.getElementById('pageInfo');
+        if (this.prev) this.prev.onclick=()=> window.pager.go(-1);
+        if (this.next) this.next.onclick=()=> window.pager.go(+1);
+        this.update(); this.show(isPageMode());
+      },
+      pages(){
+        const list=(typeof filteredShots==='function' ? filteredShots() : (window.shots||[]));
+        const total=list.length, per=Math.max(1,(BATCH_SIZE|0));
+        const pages=Math.max(1, Math.ceil(total/per));
+        if (pageIndex >= pages) pageIndex=pages-1;
+        if (pageIndex < 0) pageIndex=0;
+        return { total, per, pages };
+      },
+      show(on){ const el=this.el||document.getElementById('floatPager'); if (el) el.classList.toggle('hidden', !on); },
+      update(){
+        const { pages } = this.pages();
+        try{ localStorage.setItem('pageIndex', String(pageIndex)); }catch{}
+        if (this.info) this.info.textContent = `Page ${pages ? (pageIndex+1) : 0} / ${pages}`;
+        if (this.prev) this.prev.disabled = (pageIndex<=0);
+        if (this.next) this.next.disabled = (pageIndex>=pages-1);
+      },
+      go(delta){
+        const { pages } = this.pages();
+        pageIndex = Math.max(0, Math.min(pages-1, pageIndex + (delta|0)));
+        try{ localStorage.setItem('pageIndex', String(pageIndex)); }catch{}
+        if (typeof render==='function') render();
+        window.scrollTo({top:0, behavior:'smooth'});
+      }
+    };
+  
+    // Init after DOM is ready
+    document.addEventListener('DOMContentLoaded', () => window.pager?.init?.());
+  
+    // Keyboard shortcuts (Page Mode only; disabled while typing)
+    document.addEventListener('keydown', (e)=>{
+      const tag=(e.target&&e.target.tagName||'').toLowerCase();
+      const typing=['input','textarea','select'].includes(tag) || (e.target && e.target.isContentEditable);
+      if (typing) return;
+      if (isPageMode()){
+        if (e.key==='ArrowLeft'){ e.preventDefault(); window.pager.go(-1); }
+        else if (e.key==='ArrowRight'){ e.preventDefault(); window.pager.go(+1); }
+      }
+    }, true);
+  })();
+  </script>
+  
 
 <script>
 
@@ -1954,7 +2183,213 @@ function isPageMode(){
   });
 })();
 
-  // print
+  
+// --- Export HTML (Google Docs friendly) ---
+const exportHTMLDocsBtn = document.getElementById('exportHTMLDocs');
+if (exportHTMLDocsBtn){
+  exportHTMLDocsBtn.addEventListener('click', ()=>{
+    const list = (typeof filteredShots === 'function' ? filteredShots() : shots) || [];
+    if (!list.length){ alert('No shots to export.'); return; }
+    const esc = s => String(s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    const styles = [
+      'body{font:12px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;color:#111;margin:0;padding:14mm}',
+      'h1{font-size:16px;margin:0 0 10px}',
+      'table.sheet{border-collapse:collapse;width:100%;table-layout:fixed;margin:0 0 10px;page-break-inside:avoid}',
+      'table.sheet col.c-file{width:22%}',
+      'table.sheet col.c-tc{width:16%}',
+      'table.sheet col.c-thumb{width:26%}',
+      'table.sheet col.c-meta{width:auto}',
+      'td{vertical-align:top;padding:8px;border:1px solid #d7dae0;word-break:break-word}',
+      /* NEW: remove padding from thumbnail cell so image can truly fill the column */
+      '.thumbcell{padding:0}',    
+      /* keep some space above the image when index badge is present */
+      '.idx{font-weight:700;font-size:12px;margin:0;padding:8px 8px 6px 8px}',
+      /* keep CSS fallback anyway; Docs may ignore it but browsers will honor it */
+      '.thumb{display:block;width:100%;height:auto;max-height:480px}', // soft cap 
+      '.ttl{font-weight:700;margin:0 0 6px;font-size:12px}',
+      '.label{color:#666;margin:0 6px 0 0}',
+      '.kv{margin:0 0 4px;font-size:11px}',
+      '.desc,.note{margin:6px 0 0;white-space:pre-wrap;font-size:11px}',
+      '.mini{color:#666;font-size:10px;margin:0 0 10px}'
+    ].join('\\n');
+
+    const fields = (typeof getExportFields==='function' ? getExportFields() : new Set());
+    const title = document.title || 'Shotlist';
+    const time = new Date().toLocaleString();
+    let out = ['<!doctype html><html><head><meta charset="utf-8"><title>'+esc(title)+'</title><style>'+styles+'</style></head><body>'];
+    out.push('<h1>'+esc(title)+'</h1><p class="mini">' + esc(time) + '</p>');
+
+    for (let idx=0; idx<list.length; idx++){
+      const s = list[idx];
+      const absNo = idx + 1;
+      const num = String(absNo).padStart(3,'0');
+      const img = fields.has('thumb') ? (s.thumb || '') : '';
+
+      const fileCell = (fields.has('filename') && s.filename) ? esc(s.filename) : '&nbsp;';
+      const tcText = (fields.has('timecode')
+                      ? esc((s.startTC||'') + (s.endTC ? (' \u2013 ' + s.endTC) : ''))
+                      : '');
+      const tcCell  = tcText || '&nbsp;';
+
+      // Index + thumbnail column
+      let idxThumb = '';
+      if (fields.has('index')) idxThumb += '<div class="idx">#'+num+'</div>';
+      if (fields.has('thumb') && img){
+        // Inline style ensures width fit even if Google Docs drops CSS classes
+        idxThumb += '<img class="thumb" width="100%" ' +
+            'style="display:block;width:100%;height:auto;max-height:480px" src="'+img+'">';
+      }
+      if (!idxThumb) idxThumb = '&nbsp;';
+
+      // Meta column
+      let meta = '';
+      if (fields.has('title') && s.title) meta += '<div class="ttl">'+esc(s.title)+'</div>';
+      if (fields.has('camera') && s.camera) meta += '<p class="kv"><span class="label">Camera:</span> '+esc(s.camera)+'</p>';
+      if (fields.has('lens') && s.lens)     meta += '<p class="kv"><span class="label">Shot Size:</span> '+esc(s.lens)+'</p>';
+      if (fields.has('take') && s.take)     meta += '<p class="kv"><span class="label">Take:</span> '+esc(s.take)+'</p>';
+      if (fields.has('desc') && s.desc)     meta += '<p class="desc"><span class="label">Desc:</span> '+esc(s.desc)+'</p>';
+      if (fields.has('notes') && s.notes)   meta += '<p class="note"><span class="label">Notes:</span> '+esc(s.notes)+'</p>';
+      if (!meta) meta = '&nbsp;';
+
+      out.push(
+        '<table class="sheet"><colgroup>'+
+          '<col class="c-file"><col class="c-tc"><col class="c-thumb"><col class="c-meta">'+
+        '</colgroup><tr>'+
+          '<td class="file">'+fileCell+'</td>'+
+          '<td class="tc">'+tcCell+'</td>'+
+          '<td class="thumbcell">'+idxThumb+'</td>'+
+          '<td class="metacell">'+meta+'</td>'+
+        '</tr></table>'
+      );
+    }
+
+    out.push('</body></html>');
+    const blob = new Blob([out.join('')], {type:'text/html'});
+    const a = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    a.href = url;
+    a.download = (document.title||'shotlist') + '.docs.html';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 100);
+  });
+}
+</script>
+
+
+
+<script>
+window.getFPS = function getFPS(){
+  try{
+    var el = document.getElementById('fps');
+    var v = parseInt(el && el.value || '', 10);
+    if (!isNaN(v) && v > 0 && v < 240) return v|0;
+  }catch{}
+  return (window.FPS|0) || 24;
+};
+</script>
+
+<script>
+if (typeof window.framesToTC !== 'function'){
+  window.framesToTC = function(frames, fps){
+    fps = Math.max(2, Math.min(240, fps|0 || 24));
+    frames = Math.max(0, frames|0);
+    const hh = Math.floor(frames / (fps*3600));
+    const rem1 = frames % (fps*3600);
+    const mm = Math.floor(rem1 / (fps*60));
+    const rem2 = rem1 % (fps*60);
+    const ss = Math.floor(rem2 / fps);
+    const ff = rem2 % fps;
+    const p2 = n => String(n).padStart(2, '0');
+    return p2(hh)+':'+p2(mm)+':'+p2(ss)+':'+p2(ff);
+  };
+}
+</script>
+
+<script>
+// === Timecode (HH:MM:SS:FF) fixed-mask editor ===
+window.FPS = window.FPS || 25;
+function tcClamp(hh,mm,ss,ff){
+  const fps = Math.max(2, Math.min(60, (window.FPS|0)||25));
+  hh = Math.max(0, Math.min(99, hh|0));
+  mm = Math.max(0, Math.min(59, mm|0));
+  ss = Math.max(0, Math.min(59, ss|0));
+  ff = Math.max(0, Math.min(fps-1, ff|0));
+  return [hh,mm,ss,ff];
+}
+function tcParts(val){
+  const m = String(val||'').match(/^(\d{2}):(\d{2}):(\d{2}):(\d{2})$/);
+  if (!m) return [0,0,0,0];
+  return [m[1]|0, m[2]|0, m[3]|0, m[4]|0];
+}
+function tcString(parts){
+  const [hh,mm,ss,ff] = tcClamp(parts[0],parts[1],parts[2],parts[3]);
+  const p2 = n => String(n|0).padStart(2,'0');
+  return p2(hh)+':'+p2(mm)+':'+p2(ss)+':'+p2(ff);
+}
+function attachFixedTC(input, shot, key){
+  if (!input) return;
+  const init = shot && shot[key] ? tcString(tcParts(shot[key])) : '00:00:00:00';
+  input.value = init;
+  input.setAttribute('maxlength','11');
+  input.setAttribute('inputmode','numeric');
+  input.setAttribute('placeholder','HH:MM:SS:FF');
+  function isColonPos(pos){ return pos===2 || pos===5 || pos===8; }
+  function movePos(pos, dir){
+    let p = pos + dir;
+    if (dir>0 && (p===2||p===5||p===8)) p+=1;
+    if (dir<0 && (p===2||p===5||p===8)) p-=1;
+    if (p<0) p=0; if (p>10) p=10;
+    return p;
+  }
+  function setCharAt(s, idx, ch){ return s.substring(0, idx) + ch + s.substring(idx+1); }
+  function updateShot(v){ if (shot && key){ shot[key] = v; } }
+  input.addEventListener('focus', ()=>{ setTimeout(()=>{ try{ input.setSelectionRange(0,0);}catch{} },0); });
+  input.addEventListener('keydown', (e)=>{
+    const val = input.value || '00:00:00:00';
+    let start = input.selectionStart||0, end = input.selectionEnd||0;
+    if (e.key.length===1 && /\d/.test(e.key)){
+      e.preventDefault();
+      let pos = start;
+      if (isColonPos(pos)) pos = movePos(pos, +1);
+      const ch = e.key;
+      const newVal = setCharAt(val, pos, ch);
+      input.value = newVal; updateShot(newVal);
+      const np = movePos(pos, +1);
+      try{ input.setSelectionRange(np, np); }catch{}
+      return;
+    }
+    if (e.key === 'Backspace'){
+      e.preventDefault();
+      let pos = start;
+      if (pos===end){ pos = movePos(pos, -1); }
+      if (isColonPos(pos)) pos = movePos(pos, -1);
+      const newVal = setCharAt(val, pos, '0');
+      input.value = newVal; updateShot(newVal);
+      try{ input.setSelectionRange(pos, pos); }catch{}
+      return;
+    }
+    if (e.key === 'Delete'){
+      e.preventDefault();
+      let pos = start;
+      if (isColonPos(pos)) pos = movePos(pos, +1);
+      const newVal = setCharAt(val, pos, '0');
+      input.value = newVal; updateShot(newVal);
+      try{ input.setSelectionRange(pos, pos); }catch{}
+      return;
+    }
+    if (e.key === 'ArrowLeft'){ e.preventDefault(); let pos = movePos(start, -1); try{ input.setSelectionRange(pos, pos);}catch{}; return; }
+    if (e.key === 'ArrowRight'){ e.preventDefault(); let pos = movePos(start, +1); try{ input.setSelectionRange(pos, pos);}catch{}; return; }
+  });
+  input.addEventListener('blur', ()=>{
+    const v = tcString(tcParts(input.value));
+    input.value = v; updateShot(v);
+  });
+}
+</script>
+
+<script>
+// print
   printBtn.addEventListener('click',()=>{
     if(shots.length===0){ alert('No shots to print.'); return; }
     const list=filteredShots(), w=window.open('','_blank');
@@ -2005,53 +2440,50 @@ function isPageMode(){
   
   function escapeHtml(str){ return String(str).replace(/[&<>\"']/g,s=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[s])); }
   
-  // --- Export CSV ---
+  
+// --- Export CSV ---
   function csvEscape(v){
   if (v === undefined || v === null) return '';
   const s = String(v).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
   }
   function buildCsvRows(list){
-  const headers = [
-    'Index','Filename','Format','MediaType','Title','Description',
-    'Camera','Shot Size','Take','Notes','StartTC','EndTC','Starred','WebPFrame','WebPTotalFrames'
-  ];
-  const rows = list.map((s, i) => [
-    i+1,
-    s.filename||'',
-    s.format||'',
-    s.mediaType||'',
-    s.title||'',
-    s.desc||'',
-    s.camera||'',
-    s.lens||'',
-    s.take||'',
-    s.notes||'',
-    s.startTC||'',
-    s.endTC||'',
-    s.starred ? 1 : 0,
-    (Number.isInteger(s.webpFrame) ? s.webpFrame : ''),
-    (s.webpTotalFrames || '')
-  ]);
-  return [headers, ...rows];
+    const fields = (typeof getExportFields==='function' ? getExportFields() : new Set());
+    const cols = [
+      ['index','Index', (s,i)=> i+1],
+      ['filename','Filename', s=> s.filename||''],
+      ['start','StartTC', s=> s.startTC||''],
+      ['end','EndTC', s=> s.endTC||''],
+      ['title','Title', s=> s.title||''],
+      ['desc','Description', s=> s.desc||''],
+      ['camera','Camera', s=> s.camera||''],
+      ['lens','Shot Size', s=> s.lens||''],
+      ['take','Take', s=> s.take||''],
+      ['notes','Notes', s=> s.notes||''],
+      ['starred','Starred', s=> s.starred?1:0],
+      ['format','Format', s=> s.format||''],
+      ['media','MediaType', s=> s.mediaType||''],
+    ];
+    const chosen = cols.filter(([k])=> fields.size===0 || fields.has(k) || (k==='index' && fields.has('index')) || (k==='media' && fields.has('format')) || (k==='start' && fields.has('timecode')) || (k==='end' && fields.has('timecode')) );
+    const headers = chosen.map(([k,h])=> h);
+    const rows = list.map((s,i)=> chosen.map(([k,h,get])=> get(s,i)));
+    return [headers, ...rows];
   }
   exportCSVBtn.addEventListener('click', (e)=>{
-  const list = (typeof filteredShots === 'function' ? filteredShots() : shots) || [];
-  if(!list.length){ alert('No shots to export.'); return; }
-  // Alt/Option-click to export ALL, otherwise export current filtered view
-  const out = (e && e.altKey) ? shots : list;
-  const rows = buildCsvRows(out);
-  const csv = rows.map(r => r.map(csvEscape).join(',')).join('\r\n');
-  const blob = new Blob(["\ufeff"+csv], {type: 'text/csv;charset=utf-8;'}); // BOM for Excel
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'shotlist.csv';
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 0);
+    const list = (typeof filteredShots === 'function' ? filteredShots() : shots) || [];
+    if(!list.length){ alert('No shots to export.'); return; }
+    const out = (e && e.altKey) ? shots : list;
+    const rows = buildCsvRows(out);
+    const csv = rows.map(r => r.map(csvEscape).join(',')).join('\r\n');
+    const blob = new Blob(["\ufeff"+csv], {type: 'text/csv;charset=utf-8;'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'shotlist.csv';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 0);
   });
-  
-  async function gatherFilesFromDirHandle(dirHandle){
+async function gatherFilesFromDirHandle(dirHandle){
     const files = [];
     async function walk(handle){
       try{
@@ -2175,6 +2607,105 @@ function isPageMode(){
       // templates disabled
     }
   }, true);
+})();
+</script>
+
+<script>
+window.FPS = window.FPS || 25;
+function tcFormatPartial(val){
+  let d = String(val||'').replace(/\D/g,'').slice(0,8);
+  if (!d) return '';
+  const pad = (s,n)=> (s||'').padStart(n,'0').slice(-n);
+  const len = d.length;
+  const ff = len>=2 ? d.slice(-2) : d.slice(-len);
+  const ss = len>=4 ? d.slice(-4,-2) : (len>2 ? d.slice(0, len-2) : '');
+  const mm = len>=6 ? d.slice(-6,-4) : (len>4 ? d.slice(0, len-4) : '');
+  const hh = len>=8 ? d.slice(0, len-6-2) : '';
+  let out = '';
+  if (hh) out += pad(hh,2)+':';
+  if (mm) out += pad(mm,2)+':';
+  if (ss) out += pad(ss,2)+':';
+  out += pad(ff,2);
+  return out;
+}
+function tcNormalize(val){
+  let d = String(val||'').replace(/\D/g,'').slice(-8).padStart(8,'0');
+  let hh = parseInt(d.slice(0,2),10);
+  let mm = Math.min(59, parseInt(d.slice(2,4),10));
+  let ss = Math.min(59, parseInt(d.slice(4,6),10));
+  let ff = parseInt(d.slice(6,8),10);
+  const fps = Math.max(2, Math.min(60, (window.FPS|0)||25));
+  ff = Math.min(fps-1, ff);
+  const pad2 = n => String(n|0).padStart(2,'0');
+  return pad2(hh)+':'+pad2(mm)+':'+pad2(ss)+':'+pad2(ff);
+}
+function attachTC(el, shot, key){
+  if (!el) return;
+  el.setAttribute('inputmode','numeric');
+  el.setAttribute('placeholder','HH:MM:SS:FF');
+  el.addEventListener('input', (e)=>{
+    const v = tcFormatPartial(e.target.value);
+    e.target.value = v;
+    if (shot && key) shot[key] = v;
+  });
+  el.addEventListener('blur', (e)=>{
+    const v = tcNormalize(e.target.value);
+    e.target.value = v;
+    if (shot && key) shot[key] = v;
+  });
+}
+</script>
+
+<script>
+(function(){
+  const KEY='exportFields';
+  function getExportFields(){
+    try{
+      const raw = localStorage.getItem(KEY);
+      if (!raw) return new Set(['index','thumb','title','timecode','filename','format','camera','lens','take','desc','notes']);
+      const arr = JSON.parse(raw);
+      return new Set(arr);
+    }catch{ return new Set(['index','thumb','title','timecode','filename','format','camera','lens','take','desc','notes']); }
+  }
+  function saveExportFields(set){
+    try{ localStorage.setItem(KEY, JSON.stringify(Array.from(set||[]))); }catch{}
+  }
+  const btn = document.getElementById('exportFieldsBtn');
+  const panel = document.getElementById('exportFieldsPanel');
+  function positionPanel(){
+    if (!btn || !panel) return;
+    const r = btn.getBoundingClientRect();
+    panel.style.left = (window.scrollX + r.left) + 'px';
+    panel.style.top  = (window.scrollY + r.bottom + 6) + 'px';
+  }
+  if (btn && panel){
+    btn.addEventListener('click', ()=>{
+      const visible = !panel.classList.contains('hidden');
+      if (visible){ panel.classList.add('hidden'); return; }
+      const set = getExportFields();
+      panel.querySelectorAll('input[type=checkbox][data-fld]').forEach(cb=> cb.checked = set.has(cb.getAttribute('data-fld')));
+      positionPanel();
+      panel.classList.remove('hidden');
+    });
+    document.addEventListener('click', (e)=>{
+      if (!panel.classList.contains('hidden')){
+        if (!panel.contains(e.target) && e.target !== btn){
+          panel.classList.add('hidden');
+        }
+      }
+    });
+    panel.addEventListener('change', (e)=>{
+      const cb = e.target && e.target.matches('input[type=checkbox][data-fld]') ? e.target : null;
+      if (!cb) return;
+      const set = getExportFields();
+      const key = cb.getAttribute('data-fld');
+      if (cb.checked) set.add(key); else set.delete(key);
+      saveExportFields(set);
+    });
+    window.addEventListener('resize', ()=>{ if (!panel.classList.contains('hidden')) positionPanel(); });
+    window.addEventListener('scroll', ()=>{ if (!panel.classList.contains('hidden')) positionPanel(); }, true);
+  }
+  window.getExportFields = getExportFields;
 })();
 </script>
 
